@@ -91,6 +91,24 @@ export function combinarCiclones(puntosNhc, eventosGdacs) {
   return [...deNhc, ...deGdacs].sort((a, b) => (b.vientoKmh ?? -1) - (a.vientoKmh ?? -1))
 }
 
+// Avisos y vigilancias en la costa, con los colores que usa el NHC
+export const AVISOS_COSTA = [
+  { codigo: 'HWR', color: '#dc2626', etiqueta: 'Aviso de huracán' },
+  { codigo: 'HWA', color: '#f472b6', etiqueta: 'Vigilancia de huracán' },
+  { codigo: 'TWR', color: '#2563eb', etiqueta: 'Aviso de tormenta tropical' },
+  { codigo: 'TWA', color: '#facc15', etiqueta: 'Vigilancia de tormenta tropical' },
+]
+
+// Colores de los niveles de alerta de GDACS
+export const COLORES_ALERTA_GDACS = [
+  { nivel: 'Green', color: '#16a34a', etiqueta: 'Alerta GDACS verde' },
+  { nivel: 'Orange', color: '#f97316', etiqueta: 'Alerta GDACS naranja' },
+  { nivel: 'Red', color: '#dc2626', etiqueta: 'Alerta GDACS roja' },
+]
+
+// Color para cualquier código que no esté en las listas de arriba
+export const COLOR_DESCONOCIDO = '#6b7280'
+
 // Eventos de GDACS que NHC no tiene, para dibujarlos como puntos en el mapa
 export function eventosGdacsSinNhc(puntosNhc, eventosGdacs) {
   const yaEnNhc = nombresNhc(puntosNhc)

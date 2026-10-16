@@ -121,7 +121,7 @@
 }
 
 /* Popup del sismo: MapLibre lo pinta con fondo blanco, así que el texto va oscuro */
-.popup-sismo {
+.popup-mapa {
   display: grid;
   gap: 2px;
   /* Deja espacio para el botón de cerrar */
@@ -130,7 +130,7 @@
   font-size: 0.9375rem;
 }
 
-.popup-sismo a {
+.popup-mapa a {
   color: #1d4ed8;
   font-weight: 600;
 }

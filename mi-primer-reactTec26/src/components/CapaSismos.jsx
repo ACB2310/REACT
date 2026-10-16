@@ -3,6 +3,7 @@ import { Popup } from 'maplibre-gl'
 import { expresionColorMagnitud, etiquetaMagnitud } from '../utils/sismos.js'
 import { formatearFechaHora } from '../utils/fechas.js'
 import { useCapasMapa } from '../hooks/useCapasMapa.js'
+import { crearElemento, crearEnlaceSeguro } from '../utils/popup.js'
 
 const ID_FUENTE = 'sismos'
 const ID_CAPA = 'sismos-circulos'
@@ -10,21 +11,13 @@ const ID_CAPA = 'sismos-circulos'
 const ID_CAPA_TOQUE = 'sismos-toque'
 const COLECCION_VACIA = { type: 'FeatureCollection', features: [] }
 
-// Crea un elemento con texto. Se usa `textContent` (no innerHTML) para que
-// ningún texto que venga de la API se interprete como HTML.
-function crearElemento(etiqueta, texto) {
-  const elemento = document.createElement(etiqueta)
-  elemento.textContent = texto
-  return elemento
-}
-
 // Arma el contenido del popup de un sismo
 function crearContenidoPopup(sismo) {
   // La profundidad viene en properties (ver agregarProfundidad en utils/sismos.js)
   const { mag, place, time, url, profundidadKm } = sismo.properties
 
   const contenido = document.createElement('div')
-  contenido.className = 'popup-sismo'
+  contenido.className = 'popup-mapa'
   contenido.append(
     crearElemento('strong', etiquetaMagnitud(mag)),
     crearElemento('p', place ?? 'Lugar desconocido'),
@@ -36,14 +29,8 @@ function crearContenidoPopup(sismo) {
         : 'Profundidad: desconocida',
     ),
   )
-  // Solo enlaces https: así nunca se abre algo como "javascript:..."
-  if (typeof url === 'string' && url.startsWith('https://')) {
-    const enlace = crearElemento('a', 'Ver en USGS')
-    enlace.href = url
-    enlace.target = '_blank'
-    enlace.rel = 'noopener noreferrer'
-    contenido.append(enlace)
-  }
+  const enlace = crearEnlaceSeguro('Ver en USGS', url)
+  if (enlace) contenido.append(enlace)
   return contenido
 }
 
