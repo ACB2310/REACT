@@ -1,3 +1,5 @@
+import { dentroDeCaja } from './geo.js'
+
 // Caja que rodea a México: [oeste, sur, este, norte] en grados.
 // Incluye un poco de EE. UU. y Centroamérica ("México y alrededores").
 export const BBOX_MEXICO = [-118.5, 14.0, -86.0, 33.0]
@@ -13,11 +15,9 @@ export const UMBRALES_MAGNITUD = [
 // Devuelve una colección nueva solo con los sismos dentro de BBOX_MEXICO.
 // Ojo: GeoJSON usa [longitud, latitud], en ese orden.
 export function filtrarSismosMexico(coleccion) {
-  const [oeste, sur, este, norte] = BBOX_MEXICO
-  const features = coleccion.features.filter((sismo) => {
-    const [longitud, latitud] = sismo.geometry?.coordinates ?? []
-    return longitud >= oeste && longitud <= este && latitud >= sur && latitud <= norte
-  })
+  const features = coleccion.features.filter((sismo) =>
+    dentroDeCaja(sismo.geometry?.coordinates, BBOX_MEXICO),
+  )
   return { ...coleccion, features }
 }
 
