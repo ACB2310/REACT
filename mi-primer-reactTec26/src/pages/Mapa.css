@@ -124,6 +124,8 @@
 .popup-sismo {
   display: grid;
   gap: 2px;
+  /* Deja espacio para el botón de cerrar */
+  padding-right: 32px;
   color: #111827;
   font-size: 0.9375rem;
 }
@@ -131,4 +133,12 @@
 .popup-sismo a {
   color: #1d4ed8;
   font-weight: 600;
+}
+
+/* Botón de cerrar del popup: el de MapLibre es muy pequeño para el dedo */
+.maplibregl-popup-close-button {
+  width: 44px;
+  height: 44px;
+  font-size: 1.75rem;
+  line-height: 1;
 }

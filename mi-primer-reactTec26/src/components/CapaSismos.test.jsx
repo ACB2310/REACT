@@ -51,11 +51,14 @@ function crearMapaFalso() {
     removeLayer: vi.fn((id) => {
       delete capas[id]
     }),
-    on: vi.fn((evento, capa, manejador) => {
-      manejadores[`${evento}:${capa}`] = manejador
+    // MapLibre acepta on(evento, manejador) y on(evento, idCapa, manejador)
+    on: vi.fn((evento, capaOManejador, manejador) => {
+      if (manejador) manejadores[`${evento}:${capaOManejador}`] = manejador
+      else manejadores[evento] = capaOManejador
     }),
-    off: vi.fn((evento, capa) => {
-      delete manejadores[`${evento}:${capa}`]
+    off: vi.fn((evento, capaOManejador, manejador) => {
+      if (manejador) delete manejadores[`${evento}:${capaOManejador}`]
+      else delete manejadores[evento]
     }),
   }
 }
@@ -161,6 +164,20 @@ describe('CapaSismos', () => {
     expect(popup.contenido.textContent).toContain('<img src=x onerror=alert(1)>')
   })
 
+  it('no pone el enlace si la url no es https', () => {
+    const mapa = crearMapaFalso()
+    render(<CapaSismos mapa={mapa} sismos={sismosEjemplo} />)
+    const conUrlPeligrosa = {
+      ...sismoGuerrero,
+      properties: { ...sismoGuerrero.properties, url: 'javascript:alert(1)' },
+    }
+
+    const popup = hacerClic(mapa, conUrlPeligrosa)
+
+    expect(popup.contenido.querySelector('a')).toBeNull()
+    expect(popup.contenido.textContent).toContain('M 6.3')
+  })
+
   it('muestra "M ?" cuando mag es null', () => {
     const mapa = crearMapaFalso()
     render(<CapaSismos mapa={mapa} sismos={sismosEjemplo} />)
@@ -168,6 +185,34 @@ describe('CapaSismos', () => {
     const popup = hacerClic(mapa, sismoSinMagnitud)
 
     expect(popup.contenido.textContent).toContain('M ?')
+  })
+
+  // Al cambiar a modo oscuro MapLibre carga otro estilo y borra las capas propias
+  it('vuelve a agregar fuente y capas con los sismos actuales cuando cambia el estilo', () => {
+    const mapa = crearMapaFalso()
+    const { rerender } = render(<CapaSismos mapa={mapa} sismos={sismosEjemplo} />)
+    const nuevos = { ...sismosEjemplo, features: [sismoGuerrero] }
+    rerender(<CapaSismos mapa={mapa} sismos={nuevos} />)
+
+    // Simula el cambio de estilo: MapLibre quita todo y luego avisa con 'style.load'
+    delete mapa.fuentes.sismos
+    delete mapa.capas['sismos-circulos']
+    delete mapa.capas['sismos-toque']
+    mapa.manejadores['style.load']()
+
+    expect(mapa.fuentes.sismos.definicion.data).toBe(nuevos)
+    expect(mapa.capas['sismos-circulos']).toBeDefined()
+    expect(mapa.capas['sismos-toque']).toBeDefined()
+  })
+
+  it('deja de escuchar los cambios de estilo al desmontar', () => {
+    const mapa = crearMapaFalso()
+    const { unmount } = render(<CapaSismos mapa={mapa} sismos={sismosEjemplo} />)
+    const manejador = mapa.manejadores['style.load']
+
+    unmount()
+
+    expect(mapa.off).toHaveBeenCalledWith('style.load', manejador)
   })
 
   it('limpia capa, fuente y listener al desmontar', () => {

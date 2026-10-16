@@ -11,7 +11,8 @@ const { mapaFalso } = vi.hoisted(() => ({
   mapaFalso: {
     addSource: vi.fn(),
     addLayer: vi.fn(),
-    getSource: vi.fn(() => ({ setData: vi.fn() })),
+    // Como un mapa recién cargado: todavía no existe la fuente "sismos"
+    getSource: vi.fn(),
     getLayer: vi.fn(),
     removeLayer: vi.fn(),
     removeSource: vi.fn(),

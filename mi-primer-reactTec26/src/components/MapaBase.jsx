@@ -11,10 +11,6 @@ const ESTILO_OSCURO = 'https://tiles.openfreemap.org/styles/dark'
 // Centro aproximado de México en [longitud, latitud]
 const CENTRO_MEXICO = [-102.5, 23.6]
 
-function sistemaEnModoOscuro() {
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false
-}
-
 // Mapa base de MapLibre. En cuanto carga el estilo, entrega el mapa con `alCargar(mapa)`
 // para que otras capas (como CapaSismos) puedan dibujar encima.
 // Si el estilo no se puede descargar, avisa con `alFallar()`.
@@ -37,9 +33,12 @@ function MapaBase({ alCargar, alFallar }) {
     // Vite no lo encuentra solo, así que le decimos dónde está; con `?url` Vite
     // lo sirve en desarrollo y lo copia a dist/ al compilar.
     setWorkerUrl(urlWorkerMapLibre)
+
+    // El estilo del mapa sigue el modo claro u oscuro del sistema
+    const consultaTema = window.matchMedia?.('(prefers-color-scheme: dark)')
     const mapa = new MapaMapLibre({
       container: contenedorRef.current,
-      style: sistemaEnModoOscuro() ? ESTILO_OSCURO : ESTILO_CLARO,
+      style: consultaTema?.matches ? ESTILO_OSCURO : ESTILO_CLARO,
       center: CENTRO_MEXICO,
       zoom: 4,
     })
@@ -58,7 +57,18 @@ function MapaBase({ alCargar, alFallar }) {
       if (!estiloCargado) alFallarRef.current?.()
     })
 
-    return () => mapa.remove()
+    // Si el usuario cambia el tema con la app abierta, se carga el otro estilo.
+    // diff: false fuerza una carga completa para que se dispare 'style.load'
+    // y CapaSismos vuelva a dibujar los sismos.
+    function alCambiarTema(evento) {
+      mapa.setStyle(evento.matches ? ESTILO_OSCURO : ESTILO_CLARO, { diff: false })
+    }
+    consultaTema?.addEventListener('change', alCambiarTema)
+
+    return () => {
+      consultaTema?.removeEventListener('change', alCambiarTema)
+      mapa.remove()
+    }
   }, [])
 
   return <div ref={contenedorRef} className="mapa-base" />

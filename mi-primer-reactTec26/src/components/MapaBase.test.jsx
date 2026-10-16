@@ -11,6 +11,7 @@ vi.mock('maplibre-gl', () => {
       this.manejadores = {}
       this.controles = []
       this.remove = vi.fn()
+      this.setStyle = vi.fn()
       instancias.push(this)
     }
     on(evento, manejador) {
@@ -24,13 +25,19 @@ vi.mock('maplibre-gl', () => {
   return { Map, NavigationControl, setWorkerUrl }
 })
 
+// Guarda la consulta de tema para poder simular que el sistema cambia de claro a oscuro
+let consultaTema
 function simularModoOscuro(activo) {
-  window.matchMedia = vi.fn().mockImplementation((consulta) => ({
-    matches: activo && consulta === '(prefers-color-scheme: dark)',
-    media: consulta,
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-  }))
+  window.matchMedia = vi.fn().mockImplementation((consulta) => {
+    consultaTema = {
+      matches: activo && consulta === '(prefers-color-scheme: dark)',
+      media: consulta,
+      oyentes: [],
+      addEventListener: vi.fn((evento, oyente) => consultaTema.oyentes.push(oyente)),
+      removeEventListener: vi.fn(),
+    }
+    return consultaTema
+  })
 }
 
 describe('MapaBase', () => {
@@ -73,6 +80,30 @@ describe('MapaBase', () => {
 
   // 'load' espera a que bajen todas las teselas del mapa base; con mala señal
   // eso tarda mucho. Con 'style.load' los sismos se pueden dibujar antes.
+  it('cambia al estilo oscuro si el sistema cambia de tema con la app abierta', () => {
+    render(<MapaBase alCargar={() => {}} />)
+
+    consultaTema.oyentes.forEach((oyente) => oyente({ matches: true }))
+    expect(instancias[0].setStyle).toHaveBeenLastCalledWith(
+      'https://tiles.openfreemap.org/styles/dark',
+      { diff: false },
+    )
+
+    consultaTema.oyentes.forEach((oyente) => oyente({ matches: false }))
+    expect(instancias[0].setStyle).toHaveBeenLastCalledWith(
+      'https://tiles.openfreemap.org/styles/liberty',
+      { diff: false },
+    )
+  })
+
+  it('deja de escuchar el tema del sistema al desmontar', () => {
+    const { unmount } = render(<MapaBase alCargar={() => {}} />)
+    const [oyente] = consultaTema.oyentes
+
+    unmount()
+    expect(consultaTema.removeEventListener).toHaveBeenCalledWith('change', oyente)
+  })
+
   it('llama alCargar en cuanto carga el estilo, sin esperar todas las teselas', () => {
     const alCargar = vi.fn()
     render(<MapaBase alCargar={alCargar} />)
