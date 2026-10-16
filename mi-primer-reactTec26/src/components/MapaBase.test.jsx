@@ -3,7 +3,7 @@ import { render } from '@testing-library/react'
 import MapaBase from './MapaBase.jsx'
 
 // MapLibre necesita WebGL, que jsdom no tiene: se reemplaza por un mapa falso
-const { instancias } = vi.hoisted(() => ({ instancias: [] }))
+const { instancias, setWorkerUrl } = vi.hoisted(() => ({ instancias: [], setWorkerUrl: vi.fn() }))
 vi.mock('maplibre-gl', () => {
   class Map {
     constructor(opciones) {
@@ -21,7 +21,7 @@ vi.mock('maplibre-gl', () => {
     }
   }
   class NavigationControl {}
-  return { Map, NavigationControl }
+  return { Map, NavigationControl, setWorkerUrl }
 })
 
 function simularModoOscuro(activo) {
@@ -36,10 +36,23 @@ function simularModoOscuro(activo) {
 describe('MapaBase', () => {
   beforeEach(() => {
     instancias.length = 0
+    setWorkerUrl.mockReset()
     simularModoOscuro(false)
   })
   afterEach(() => {
     delete window.matchMedia
+  })
+
+  // Sin esto, Vite deja a MapLibre sin su worker: no se dibujan calles ni sismos
+  it('le indica a MapLibre dónde está su worker antes de crear el mapa', () => {
+    setWorkerUrl.mockImplementation(() => {
+      expect(instancias).toHaveLength(0)
+    })
+    render(<MapaBase alCargar={() => {}} />)
+
+    expect(setWorkerUrl).toHaveBeenCalled()
+    expect(setWorkerUrl.mock.calls[0][0]).toMatch(/maplibre-gl-worker.mjs/)
+    expect(instancias).toHaveLength(1)
   })
 
   it('crea el mapa centrado en México con [lon, lat] dentro de su contenedor', () => {

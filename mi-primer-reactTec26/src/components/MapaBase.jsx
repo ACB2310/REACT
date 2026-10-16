@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { Map as MapaMapLibre, NavigationControl } from 'maplibre-gl'
+import { Map as MapaMapLibre, NavigationControl, setWorkerUrl } from 'maplibre-gl'
+import urlWorkerMapLibre from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import './MapaBase.css'
 
@@ -32,6 +33,10 @@ function MapaBase({ alCargar, alFallar }) {
   // Crea el mapa una sola vez y lo elimina al salir de la pantalla.
   // En StrictMode React monta, desmonta y vuelve a montar: por eso es importante `remove()`.
   useEffect(() => {
+    // MapLibre procesa las teselas y el GeoJSON en un "worker" (un hilo aparte).
+    // Vite no lo encuentra solo, así que le decimos dónde está; con `?url` Vite
+    // lo sirve en desarrollo y lo copia a dist/ al compilar.
+    setWorkerUrl(urlWorkerMapLibre)
     const mapa = new MapaMapLibre({
       container: contenedorRef.current,
       style: sistemaEnModoOscuro() ? ESTILO_OSCURO : ESTILO_CLARO,
