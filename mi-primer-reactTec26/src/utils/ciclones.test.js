@@ -56,6 +56,47 @@ describe('nombreCorto', () => {
     expect(nombreCorto('SIMON-26')).toBe('Simon')
     expect(nombreCorto('Potential Tropical Cyclone Simon')).toBe('Simon')
   })
+
+  // El Pacífico ya va en la tormenta 21: las siguientes depresiones tienen nombres con número
+  it('conserva los nombres con número y guion', () => {
+    expect(nombreCorto('Tropical Depression Twenty-One')).toBe('Twenty-One')
+    expect(nombreCorto('Potential Tropical Cyclone Twenty-Two')).toBe('Twenty-Two')
+    expect(nombreCorto('Twenty-One')).toBe('Twenty-One')
+    expect(nombreCorto('TWENTYONE-26')).toBe('Twentyone')
+    expect(nombreCorto('Major Hurricane Otis')).toBe('Otis')
+  })
+})
+
+describe('combinarCiclones con depresiones numeradas', () => {
+  function puntoNhc(stormname, binnumber) {
+    const base = puntosNhcEjemplo.features[0]
+    return { ...base, properties: { ...base.properties, stormname, stormtype: 'TD', ssnum: 0, maxwind: 30, binnumber } }
+  }
+  function eventoGdacs(eventname, eventid, nivel) {
+    const base = eventosGdacsEjemplo.features[0]
+    return { ...base, properties: { ...base.properties, eventname, eventid, episodealertlevel: nivel } }
+  }
+
+  it('une la misma depresión aunque NHC y GDACS la escriban distinto', () => {
+    const nhc = { type: 'FeatureCollection', features: [puntoNhc('Tropical Depression Twenty-One', 'EP2')] }
+    const gdacs = { type: 'FeatureCollection', features: [eventoGdacs('TWENTYONE-26', 1, 'Orange')] }
+
+    const ciclones = combinarCiclones(nhc, gdacs)
+    expect(ciclones).toHaveLength(1)
+    expect(ciclones[0]).toMatchObject({ nombre: 'Twenty-One', fuente: 'NHC', alertaGdacs: 'naranja' })
+  })
+
+  it('no confunde dos depresiones numeradas distintas', () => {
+    const nhc = { type: 'FeatureCollection', features: [puntoNhc('Tropical Depression Twenty-One', 'EP2')] }
+    const gdacs = { type: 'FeatureCollection', features: [eventoGdacs('TWENTYTWO-26', 2, 'Red')] }
+
+    const ciclones = combinarCiclones(nhc, gdacs)
+    expect(ciclones.map((c) => [c.nombre, c.alertaGdacs])).toEqual([
+      ['Twenty-One', null],
+      ['Twentytwo', 'roja'],
+    ])
+    expect(eventosGdacsSinNhc(nhc, gdacs).features.map((f) => f.properties.eventname)).toEqual(['TWENTYTWO-26'])
+  })
 })
 
 describe('combinarCiclones', () => {

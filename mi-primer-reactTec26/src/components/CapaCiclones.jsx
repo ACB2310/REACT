@@ -22,6 +22,14 @@ function colorSegun(propiedad, opciones, clave) {
   return ['match', ['get', propiedad], ...opciones.flatMap((o) => [o[clave], o.color]), COLOR_DESCONOCIDO]
 }
 
+// "Viento: 139 km/h (ráfagas 167 km/h)", sin escribir "null" si falta algún dato
+function textoViento(p) {
+  const viento = nudosAKmh(p.maxwind)
+  const rafagas = nudosAKmh(p.gust)
+  if (viento === null) return 'Viento: sin dato'
+  return rafagas === null ? `Viento: ${viento} km/h` : `Viento: ${viento} km/h (ráfagas ${rafagas} km/h)`
+}
+
 // Contenido del popup al tocar un punto del NHC (posición actual o pronóstico)
 function crearPopupNhc(punto) {
   const p = punto.properties
@@ -30,9 +38,10 @@ function crearPopupNhc(punto) {
   contenido.append(
     crearElemento('strong', `${nombreTipoCiclon(p.stormtype)} ${nombreCorto(p.stormname)}`),
     crearElemento('p', p.tau === 0 ? 'Posición actual' : `Pronóstico a ${p.tau} h`),
-    crearElemento('p', `Viento: ${nudosAKmh(p.maxwind)} km/h (ráfagas ${nudosAKmh(p.gust)} km/h)`),
+    crearElemento('p', textoViento(p)),
   )
-  if (p.mslp > 0) contenido.append(crearElemento('p', `Presión: ${p.mslp} hPa`))
+  // NOAA manda 9999 (o 0) cuando no hay dato de presión, como en los puntos de pronóstico
+  if (p.mslp > 0 && p.mslp < 9999) contenido.append(crearElemento('p', `Presión: ${p.mslp} hPa`))
   contenido.append(crearElemento('p', `Aviso NHC ${p.advisnum}`))
   const pagina = p.basin === 'EP' ? 'https://www.nhc.noaa.gov/?epac' : 'https://www.nhc.noaa.gov/?atlc'
   contenido.append(crearEnlaceSeguro('Ver avisos del NHC', pagina))

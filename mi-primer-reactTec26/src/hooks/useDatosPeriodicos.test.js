@@ -33,6 +33,18 @@ describe('useDatosPeriodicos', () => {
     expect(result.current.estado).toBe('listo')
   })
 
+  // Si la fuente no trae hora (por ejemplo, no hay tormentas), al menos se sabe cuándo se consultó
+  it('guarda consultadoEn con la hora de la última descarga exitosa', async () => {
+    vi.setSystemTime(Date.UTC(2026, 9, 16, 21, 30))
+    obtener.mockResolvedValue({ datos: [], actualizadoEn: null })
+    const { result } = renderHook(() => useDatosPeriodicos(obtener, 60000))
+    expect(result.current.consultadoEn).toBeNull()
+
+    await esperarPromesas()
+    expect(result.current.actualizadoEn).toBeNull()
+    expect(result.current.consultadoEn).toBe(Date.UTC(2026, 9, 16, 21, 30))
+  })
+
   it('respeta el intervalo que recibe', async () => {
     renderHook(() => useDatosPeriodicos(obtener, 60000))
     await esperarPromesas()

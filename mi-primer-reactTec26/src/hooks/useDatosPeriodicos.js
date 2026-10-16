@@ -8,6 +8,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 export function useDatosPeriodicos(obtener, intervaloMs, { activo = true } = {}) {
   const [datos, setDatos] = useState(null)
   const [actualizadoEn, setActualizadoEn] = useState(null)
+  // Hora de la última descarga exitosa. Sirve cuando la fuente no trae hora propia
+  // (por ejemplo, NHC sin tormentas activas): así se sabe cuándo se revisó.
+  const [consultadoEn, setConsultadoEn] = useState(null)
   const [estado, setEstado] = useState('cargando')
   const [error, setError] = useState(null)
   const [sinConexion, setSinConexion] = useState(() => !navigator.onLine)
@@ -39,6 +42,7 @@ export function useDatosPeriodicos(obtener, intervaloMs, { activo = true } = {})
         if (actual.signal.aborted) return
         setDatos(resultado.datos)
         setActualizadoEn(resultado.actualizadoEn)
+        setConsultadoEn(Date.now())
         setError(null)
         setEstado('listo')
         // Si la descarga funcionó, hay conexión (por si el evento 'online' no llegó)
@@ -82,5 +86,5 @@ export function useDatosPeriodicos(obtener, intervaloMs, { activo = true } = {})
     cargarRef.current()
   }, [])
 
-  return { datos, estado, error, actualizadoEn, sinConexion, recargar }
+  return { datos, estado, error, actualizadoEn, consultadoEn, sinConexion, recargar }
 }

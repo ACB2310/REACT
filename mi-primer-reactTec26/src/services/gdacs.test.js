@@ -65,6 +65,16 @@ describe('obtenerCiclonesGdacs', () => {
     expect(eventos.features[0].properties.urlReporte).toBeNull()
   })
 
+  // En días sin ciclones cerca, la hora de la lista de GDACS sigue siendo útil
+  it('actualizadoEn usa la modificación más reciente de toda la lista, aunque no quede ningún evento', async () => {
+    const lejanos = respuestaGdacsEjemplo.features.filter((e) => ['POLO-26', 'CHAMPI-26'].includes(e.properties.eventname))
+    responder({ ...respuestaGdacsEjemplo, features: lejanos })
+
+    const { eventos, actualizadoEn } = await obtenerCiclonesGdacs()
+    expect(eventos.features).toEqual([])
+    expect(actualizadoEn).toBe(Date.UTC(2026, 9, 16, 18, 0, 0))
+  })
+
   it('sin eventos actualizadoEn es null', async () => {
     responder({ type: 'FeatureCollection', features: [] })
     const { eventos, actualizadoEn } = await obtenerCiclonesGdacs()

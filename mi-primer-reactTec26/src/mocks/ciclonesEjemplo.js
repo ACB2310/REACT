@@ -62,7 +62,15 @@ export const nhcEjemplo = {
     type: 'FeatureCollection',
     features: [
       puntoNhc(0, [-102, 15]),
-      puntoNhc(12, [-102.4, 15.8], { maxwind: 80, gust: 100, mslp: 978, datelbl: '3:00 AM Sat' }),
+      // Como en la respuesta real: en los puntos de pronóstico NOAA manda 9999 = "sin dato"
+      puntoNhc(12, [-102.4, 15.8], {
+        maxwind: 80,
+        gust: 100,
+        mslp: 9999,
+        tcdir: 9999,
+        tcspd: 9999,
+        datelbl: '12:00 AM Sat',
+      }),
     ],
   },
   trayectorias: {

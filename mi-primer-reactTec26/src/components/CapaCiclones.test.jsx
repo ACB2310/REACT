@@ -106,6 +106,29 @@ describe('CapaCiclones', () => {
     expect(popup.contenido.textContent).toContain('Pronóstico a 12 h')
   })
 
+  it('no muestra la presión 9999 que NOAA usa como "sin dato"', () => {
+    const mapa = mapaConSismos()
+    render(<CapaCiclones mapa={mapa} nhc={nhcEjemplo} eventosGdacs={null} />)
+
+    const popup = tocar(mapa, 'ciclones-puntos-toque', trudyPronostico)
+    expect(popup.contenido.textContent).not.toContain('9999')
+    expect(popup.contenido.textContent).not.toContain('Presión')
+  })
+
+  it('sin dato de viento no escribe "null"', () => {
+    const mapa = mapaConSismos()
+    render(<CapaCiclones mapa={mapa} nhc={nhcEjemplo} eventosGdacs={null} />)
+    const original = nhcEjemplo.puntos.features[0]
+    const sinViento = comoLoDevuelveMapLibre({
+      ...original,
+      properties: { ...original.properties, maxwind: null, gust: null },
+    })
+
+    const popup = tocar(mapa, 'ciclones-puntos-toque', sinViento)
+    expect(popup.contenido.textContent).not.toContain('null')
+    expect(popup.contenido.textContent).toContain('Viento: sin dato')
+  })
+
   it('no muestra presión si NHC la manda en 0', () => {
     const mapa = mapaConSismos()
     render(<CapaCiclones mapa={mapa} nhc={nhcEjemplo} eventosGdacs={null} />)

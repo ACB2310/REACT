@@ -33,11 +33,24 @@ export function nombreAlertaGdacs(nivel) {
   return ALERTAS_GDACS[nivel] ?? null
 }
 
-// Saca el nombre propio: "Hurricane Trudy" → "Trudy"; "SIMON-26" → "Simon"
+// Tipos que el NHC pone antes del nombre ("Hurricane Trudy", "Tropical Depression Twenty-One")
+const PREFIJOS_NHC =
+  /^(major hurricane|hurricane|tropical storm|tropical depression|subtropical storm|subtropical depression|potential tropical cyclone|post-tropical cyclone|remnants of)\s+/i
+
+// Saca el nombre propio:
+// "Hurricane Trudy" → "Trudy"; "SIMON-26" → "Simon";
+// "Tropical Depression Twenty-One" → "Twenty-One" (el guion del nombre se conserva)
 export function nombreCorto(texto) {
-  const sinAnio = String(texto ?? '').split('-')[0].trim()
-  const ultimaPalabra = sinAnio.split(/\s+/).at(-1) ?? ''
-  return ultimaPalabra.charAt(0).toUpperCase() + ultimaPalabra.slice(1).toLowerCase()
+  // GDACS agrega el año al final ("-26")
+  const sinAnio = String(texto ?? '').trim().replace(/-\d{2}$/, '')
+  const sinTipo = sinAnio.replace(PREFIJOS_NHC, '')
+  // Mayúscula al inicio de cada palabra o de cada parte separada por guion
+  return sinTipo.toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (_, separador, letra) => separador + letra.toUpperCase())
+}
+
+// Clave para comparar nombres de NHC y GDACS: "Twenty-One" y "TWENTYONE-26" dan "TWENTYONE"
+function claveNombre(texto) {
+  return nombreCorto(texto).toUpperCase().replace(/[^\p{L}\d]/gu, '')
 }
 
 // Posición actual de cada tormenta del NHC (los puntos con tau 0)
@@ -46,7 +59,7 @@ function posicionesActualesNhc(puntosNhc) {
 }
 
 function nombresNhc(puntosNhc) {
-  return new Set(posicionesActualesNhc(puntosNhc).map((p) => nombreCorto(p.properties.stormname)))
+  return new Set(posicionesActualesNhc(puntosNhc).map((p) => claveNombre(p.properties.stormname)))
 }
 
 // Junta las tormentas de NHC y GDACS en una sola lista sin duplicar.
@@ -55,27 +68,26 @@ function nombresNhc(puntosNhc) {
 export function combinarCiclones(puntosNhc, eventosGdacs) {
   const eventos = eventosGdacs?.features ?? []
   const alertaPorNombre = new Map(
-    eventos.map((e) => [nombreCorto(e.properties.eventname), nombreAlertaGdacs(e.properties.episodealertlevel)]),
+    eventos.map((e) => [claveNombre(e.properties.eventname), nombreAlertaGdacs(e.properties.episodealertlevel)]),
   )
 
   const deNhc = posicionesActualesNhc(puntosNhc).map((punto) => {
     const p = punto.properties
-    const nombre = nombreCorto(p.stormname)
     return {
       id: `nhc-${p.binnumber}`,
-      nombre,
+      nombre: nombreCorto(p.stormname),
       tipo: nombreTipoCiclon(p.stormtype),
       vientoKmh: nudosAKmh(p.maxwind),
       categoria: p.ssnum > 0 ? p.ssnum : null,
       posicion: punto.geometry.coordinates.slice(0, 2),
       fuente: 'NHC',
-      alertaGdacs: alertaPorNombre.get(nombre) ?? null,
+      alertaGdacs: alertaPorNombre.get(claveNombre(p.stormname)) ?? null,
     }
   })
 
-  const yaEnNhc = new Set(deNhc.map((c) => c.nombre))
+  const yaEnNhc = nombresNhc(puntosNhc)
   const deGdacs = eventos
-    .filter((e) => !yaEnNhc.has(nombreCorto(e.properties.eventname)))
+    .filter((e) => !yaEnNhc.has(claveNombre(e.properties.eventname)))
     .map((e) => ({
       id: `gdacs-${e.properties.eventid}`,
       nombre: nombreCorto(e.properties.eventname),
@@ -114,6 +126,6 @@ export function eventosGdacsSinNhc(puntosNhc, eventosGdacs) {
   const yaEnNhc = nombresNhc(puntosNhc)
   return {
     type: 'FeatureCollection',
-    features: (eventosGdacs?.features ?? []).filter((e) => !yaEnNhc.has(nombreCorto(e.properties.eventname))),
+    features: (eventosGdacs?.features ?? []).filter((e) => !yaEnNhc.has(claveNombre(e.properties.eventname))),
   }
 }

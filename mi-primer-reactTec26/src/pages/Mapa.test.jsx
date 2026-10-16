@@ -304,6 +304,19 @@ describe('Página Mapa', () => {
       expect(screen.queryByText(/^Satélite:/)).not.toBeInTheDocument()
     })
 
+    it('sin tormentas el pie dice cuándo se consultó en lugar de —', () => {
+      const vacioNhc = { puntos: VACIA, trayectorias: VACIA, conos: VACIA, avisos: VACIA }
+      simularCiclones({
+        nhc: { datos: vacioNhc, actualizadoEn: null, consultadoEn: Date.UTC(2026, 9, 16, 21, 30) },
+        gdacs: { datos: VACIA, actualizadoEn: null, consultadoEn: Date.UTC(2026, 9, 16, 21, 31) },
+      })
+      render(<Mapa />)
+
+      expect(screen.getByText(/^Ciclones: NHC\/NOAA · /)).toHaveTextContent(
+        /NHC\/NOAA · consultado 16 oct\.? 2026, 15:30 · GDACS · consultado 16 oct\.? 2026, 15:31/,
+      )
+    })
+
     it('sin datos todavía usa — en lugar de "sin fecha"', () => {
       simularSismos({})
       render(<Mapa />)

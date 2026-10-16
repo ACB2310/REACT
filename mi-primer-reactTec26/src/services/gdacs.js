@@ -45,7 +45,9 @@ export async function obtenerCiclonesGdacs({ signal } = {}) {
     .filter((e) => e.properties?.iscurrent === 'true' && dentroDeCaja(e.geometry?.coordinates, BBOX_CICLONES))
     .map(aplanarEvento)
 
-  const fechas = features.map((e) => e.properties.fechaModificacion).filter((f) => f !== null)
+  // La hora del dato es la última modificación de TODA la lista de GDACS, no solo de los
+  // ciclones cercanos: así un día sin ciclones también dice desde cuándo es la información
+  const fechas = datos.features.map((e) => leerFechaUtc(e.properties?.datemodified)).filter((f) => f !== null)
   return {
     eventos: { type: 'FeatureCollection', features },
     actualizadoEn: fechas.length > 0 ? Math.max(...fechas) : null,

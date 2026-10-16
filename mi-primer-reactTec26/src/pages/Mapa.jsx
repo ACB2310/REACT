@@ -18,7 +18,20 @@ const AVISO_OFICIAL =
 
 // Mientras no haya datos no hay hora que mostrar
 function horaDe(actualizadoEn) {
-  return actualizadoEn === null ? '—' : formatearFechaHora(actualizadoEn)
+  return actualizadoEn === null || actualizadoEn === undefined ? '—' : formatearFechaHora(actualizadoEn)
+}
+
+// Hora para el pie. Si la fuente no trae hora propia (por ejemplo, NHC sin tormentas),
+// se dice cuándo se consultó, para que nunca quede sin hora un "Sin ciclones activos".
+function horaDeFuente({ actualizadoEn, consultadoEn }) {
+  if (actualizadoEn !== null && actualizadoEn !== undefined) return horaDe(actualizadoEn)
+  if (consultadoEn !== null && consultadoEn !== undefined) return `consultado ${horaDe(consultadoEn)}`
+  return '—'
+}
+
+// Hora para los mensajes de error ("Mostrando datos del …")
+function horaParaMensaje({ actualizadoEn, consultadoEn }) {
+  return horaDe(actualizadoEn ?? consultadoEn)
 }
 
 // Texto de un renglón de la lista de ciclones, por ejemplo
@@ -101,7 +114,7 @@ function Mapa() {
               estado={sismos.estado}
               error={sismos.error}
               hayDatos={Boolean(sismos.sismos)}
-              hora={horaDe(sismos.actualizadoEn)}
+              hora={horaParaMensaje(sismos)}
               recargar={sismos.recargar}
             />
             <MensajeFuente
@@ -110,7 +123,7 @@ function Mapa() {
               estado={nhc.estado}
               error={nhc.error}
               hayDatos={Boolean(nhc.datos)}
-              hora={horaDe(nhc.actualizadoEn)}
+              hora={horaParaMensaje(nhc)}
               recargar={nhc.recargar}
             />
             <MensajeFuente
@@ -119,7 +132,7 @@ function Mapa() {
               estado={gdacs.estado}
               error={gdacs.error}
               hayDatos={Boolean(gdacs.datos)}
-              hora={horaDe(gdacs.actualizadoEn)}
+              hora={horaParaMensaje(gdacs)}
               recargar={gdacs.recargar}
             />
             {capas.satelite && (
@@ -129,7 +142,7 @@ function Mapa() {
                 estado={satelite.estado}
                 error={satelite.error}
                 hayDatos={Boolean(satelite.datos)}
-                hora={horaDe(satelite.actualizadoEn)}
+                hora={horaParaMensaje(satelite)}
                 recargar={satelite.recargar}
               />
             )}
@@ -164,12 +177,12 @@ function Mapa() {
           <LeyendaMagnitud />
           <LeyendaCiclones />
         </details>
-        <p className="fuente">Sismos: USGS · {horaDe(sismos.actualizadoEn)}</p>
+        <p className="fuente">Sismos: USGS · {horaDeFuente(sismos)}</p>
         <p className="fuente">
-          Ciclones: NHC/NOAA · {horaDe(nhc.actualizadoEn)} · GDACS · {horaDe(gdacs.actualizadoEn)}
+          Ciclones: NHC/NOAA · {horaDeFuente(nhc)} · GDACS · {horaDeFuente(gdacs)}
         </p>
         {capas.satelite && (
-          <p className="fuente">Satélite: NASA GIBS (GOES-East) · {horaDe(satelite.actualizadoEn)}</p>
+          <p className="fuente">Satélite: NASA GIBS (GOES-East) · {horaDeFuente(satelite)}</p>
         )}
         <p className="aviso-oficial">{AVISO_OFICIAL}</p>
       </footer>

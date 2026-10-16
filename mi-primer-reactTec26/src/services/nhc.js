@@ -39,12 +39,13 @@ export async function obtenerCiclonesNhc({ signal } = {}) {
     obtenerCapa(CAPAS_NHC.avisos, signal),
   ])
 
-  // Una tormenta está "cerca" si su posición actual (tau 0) cae en la zona de interés.
+  // Una tormenta está "cerca" si su posición actual o CUALQUIER punto de su pronóstico
+  // cae en la zona de interés: un huracán lejos hoy puede llegar a México en 3 días.
   // Cada tormenta se identifica por su "bin" (EP1, AT2...), que comparten todas sus capas.
   const bins = new Set(
     puntos.features
-      .filter((p) => p.properties?.tau === 0 && dentroDeCaja(p.geometry?.coordinates, BBOX_CICLONES))
-      .map((p) => p.properties.binnumber),
+      .filter((p) => dentroDeCaja(p.geometry?.coordinates, BBOX_CICLONES))
+      .map((p) => p.properties?.binnumber),
   )
 
   // NOAA manda el nombre en inglés ("Hurricane Trudy"); para la etiqueta del mapa

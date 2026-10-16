@@ -96,6 +96,21 @@ describe('obtenerCiclonesNhc', () => {
     expect(resultado.conos.features).toHaveLength(1)
   })
 
+  // Un huracán en el Caribe oriental hoy puede tocar Quintana Roo en 3 días
+  it('conserva una tormenta lejana si su pronóstico entra en la zona', async () => {
+    const base = nhcEjemplo.puntos.features[0]
+    const caribe = (tau, coordenadas) => ({
+      ...base,
+      geometry: { type: 'Point', coordinates: coordenadas },
+      properties: { ...base.properties, binnumber: 'AT1', stormname: 'Hurricane Lejano', basin: 'AL', tau },
+    })
+    const puntos = { ...nhcEjemplo.puntos, features: [caribe(0, [-62, 15]), caribe(72, [-86, 20])] }
+    vi.stubGlobal('fetch', fetchPorCapa({ 5: puntos }))
+
+    const resultado = await obtenerCiclonesNhc()
+    expect(resultado.puntos.features.map((f) => f.properties.tau)).toEqual([0, 72])
+  })
+
   it('actualizadoEn es el idp_filedate más reciente', async () => {
     const conosMasNuevos = {
       ...nhcEjemplo.conos,
