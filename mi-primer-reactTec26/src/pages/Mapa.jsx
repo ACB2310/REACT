@@ -43,6 +43,18 @@ function Mapa() {
   const { sismos, estado, error, actualizadoEn, sinConexion, recargar } = useSismos()
   // El mapa de MapLibre llega cuando termina de cargar (ver MapaBase)
   const [mapa, setMapa] = useState(null)
+  const [falloMapaBase, setFalloMapaBase] = useState(false)
+  // Cambiar este número hace que React cree un MapaBase nuevo (para reintentar)
+  const [intentoMapa, setIntentoMapa] = useState(0)
+
+  function alFallarMapaBase() {
+    setFalloMapaBase(true)
+  }
+  function reintentarMapaBase() {
+    setFalloMapaBase(false)
+    setMapa(null)
+    setIntentoMapa((intento) => intento + 1)
+  }
 
   const hora = formatearFechaHora(actualizadoEn)
   const total = sismos?.features.length ?? 0
@@ -70,10 +82,18 @@ function Mapa() {
             )}
           </div>
         )}
+        {falloMapaBase && (
+          <div className="mensaje-estado mensaje-error" role="alert">
+            <p>No se pudo cargar el mapa base. Revisa tu conexión.</p>
+            <button type="button" className="boton-reintentar" onClick={reintentarMapaBase}>
+              Reintentar mapa
+            </button>
+          </div>
+        )}
       </header>
 
       <div className="contenedor-mapa">
-        <MapaBase alCargar={setMapa} />
+        <MapaBase key={intentoMapa} alCargar={setMapa} alFallar={alFallarMapaBase} />
         <CapaSismos mapa={mapa} sismos={sismos} />
       </div>
 

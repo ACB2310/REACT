@@ -34,3 +34,20 @@ export function etiquetaMagnitud(mag) {
   if (typeof mag !== 'number' || Number.isNaN(mag)) return 'M ?'
   return `M ${mag.toFixed(1)}`
 }
+
+// Copia la profundidad (tercera coordenada) a `properties.profundidadKm`.
+// Hace falta porque MapLibre solo conserva [longitud, latitud] al dibujar,
+// y al tocar un sismo la profundidad ya no vendría en las coordenadas.
+export function agregarProfundidad(coleccion) {
+  const features = coleccion.features.map((sismo) => {
+    const profundidad = sismo.geometry?.coordinates?.[2]
+    return {
+      ...sismo,
+      properties: {
+        ...sismo.properties,
+        profundidadKm: typeof profundidad === 'number' ? profundidad : null,
+      },
+    }
+  })
+  return { ...coleccion, features }
+}

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
 import CapaSismos from './CapaSismos.jsx'
 import { sismosEjemplo } from '../mocks/sismosEjemplo.js'
+import { agregarProfundidad } from '../utils/sismos.js'
 
 // Se captura cada Popup que crea el componente
 const { popups } = vi.hoisted(() => ({ popups: [] }))
@@ -59,11 +60,23 @@ function crearMapaFalso() {
   }
 }
 
-const sismoGuerrero = sismosEjemplo.features[1]
-const sismoSinMagnitud = sismosEjemplo.features[3]
+const sismosPreparados = agregarProfundidad(sismosEjemplo)
+
+// MapLibre no entrega el GeoJSON original al hacer clic: solo [lon, lat]
+// (sin profundidad) y sin las propiedades que valen null
+function comoLoDevuelveMapLibre(sismo) {
+  const [longitud, latitud] = sismo.geometry.coordinates
+  const properties = Object.fromEntries(
+    Object.entries(sismo.properties).filter(([, valor]) => valor !== null),
+  )
+  return { type: 'Feature', geometry: { type: 'Point', coordinates: [longitud, latitud] }, properties }
+}
+
+const sismoGuerrero = comoLoDevuelveMapLibre(sismosPreparados.features[1])
+const sismoSinMagnitud = comoLoDevuelveMapLibre(sismosPreparados.features[3])
 
 function hacerClic(mapa, sismo) {
-  mapa.manejadores['click:sismos-circulos']({ features: [sismo] })
+  mapa.manejadores['click:sismos-toque']({ features: [sismo] })
   return popups.at(-1)
 }
 
@@ -90,6 +103,18 @@ describe('CapaSismos', () => {
     expect(capa.paint['circle-radius']).toEqual([
       'interpolate', ['linear'], ['coalesce', ['get', 'mag'], 0], 2.5, 4, 7, 18,
     ])
+  })
+
+  it('agrega una capa invisible más grande para tocar con el dedo', () => {
+    const mapa = crearMapaFalso()
+    render(<CapaSismos mapa={mapa} sismos={sismosEjemplo} />)
+
+    const capaToque = mapa.capas['sismos-toque']
+    expect(capaToque.type).toBe('circle')
+    expect(capaToque.source).toBe('sismos')
+    expect(capaToque.paint['circle-radius']).toBe(16)
+    expect(capaToque.paint['circle-opacity']).toBe(0)
+    expect(mapa.manejadores['click:sismos-toque']).toBeTypeOf('function')
   })
 
   it('actualiza con setData cuando la fuente ya existe', () => {
@@ -148,12 +173,13 @@ describe('CapaSismos', () => {
   it('limpia capa, fuente y listener al desmontar', () => {
     const mapa = crearMapaFalso()
     const { unmount } = render(<CapaSismos mapa={mapa} sismos={sismosEjemplo} />)
-    const manejador = mapa.manejadores['click:sismos-circulos']
+    const manejador = mapa.manejadores['click:sismos-toque']
 
     unmount()
 
-    expect(mapa.off).toHaveBeenCalledWith('click', 'sismos-circulos', manejador)
+    expect(mapa.off).toHaveBeenCalledWith('click', 'sismos-toque', manejador)
     expect(mapa.capas['sismos-circulos']).toBeUndefined()
+    expect(mapa.capas['sismos-toque']).toBeUndefined()
     expect(mapa.fuentes.sismos).toBeUndefined()
   })
 

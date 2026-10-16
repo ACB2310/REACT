@@ -1,12 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, act } from '@testing-library/react'
 import Mapa from './Mapa.jsx'
 import { useSismos } from '../hooks/useSismos.js'
 import { sismosEjemplo } from '../mocks/sismosEjemplo.js'
 
 vi.mock('../hooks/useSismos.js', () => ({ useSismos: vi.fn() }))
 // MapLibre necesita WebGL; aquí solo se prueba lo que muestra la página alrededor del mapa
-vi.mock('../components/MapaBase.jsx', () => ({ default: () => <div data-testid="mapa" /> }))
+// El MapaBase falso guarda sus props para poder simular que el mapa base falla
+const { mapaBase } = vi.hoisted(() => ({ mapaBase: { props: null, montajes: 0 } }))
+vi.mock('../components/MapaBase.jsx', async () => {
+  const { useEffect } = await import('react')
+  return {
+    default: function MapaBaseFalso(props) {
+      mapaBase.props = props
+      useEffect(() => {
+        mapaBase.montajes += 1
+      }, [])
+      return <div data-testid="mapa" />
+    },
+  }
+})
 vi.mock('../components/CapaSismos.jsx', () => ({ default: () => null }))
 
 const AVISO =
@@ -35,6 +48,8 @@ function simularHook(valores) {
 describe('Página Mapa', () => {
   beforeEach(() => {
     useSismos.mockReset()
+    mapaBase.props = null
+    mapaBase.montajes = 0
   })
 
   it('muestra el aviso informativo en todos los estados', () => {
@@ -122,5 +137,23 @@ describe('Página Mapa', () => {
     expect(screen.getByText('6.0 o más')).toBeInTheDocument()
     expect(screen.getByText('4.0 a 5.9')).toBeInTheDocument()
     expect(screen.getByText('menos de 4.0')).toBeInTheDocument()
+  })
+
+  it('si el mapa base no carga, lo dice y Reintentar vuelve a crearlo', () => {
+    simularHook({ estado: 'listo', sismos: dosSismos, actualizadoEn: 1700000000000 })
+    render(<Mapa />)
+    expect(mapaBase.montajes).toBe(1)
+
+    act(() => {
+      mapaBase.props.alFallar()
+    })
+    expect(screen.getByText('No se pudo cargar el mapa base. Revisa tu conexión.')).toBeInTheDocument()
+    expect(screen.getByText('2 sismos en los últimos 7 días')).toBeInTheDocument()
+
+    act(() => {
+      screen.getByRole('button', { name: 'Reintentar mapa' }).click()
+    })
+    expect(mapaBase.montajes).toBe(2)
+    expect(screen.queryByText('No se pudo cargar el mapa base. Revisa tu conexión.')).not.toBeInTheDocument()
   })
 })

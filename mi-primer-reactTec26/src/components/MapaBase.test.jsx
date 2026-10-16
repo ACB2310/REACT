@@ -58,13 +58,32 @@ describe('MapaBase', () => {
     expect(instancias[0].opciones.style).toBe('https://tiles.openfreemap.org/styles/dark')
   })
 
-  it('llama alCargar con el mapa al dispararse load', () => {
+  // 'load' espera a que bajen todas las teselas del mapa base; con mala señal
+  // eso tarda mucho. Con 'style.load' los sismos se pueden dibujar antes.
+  it('llama alCargar en cuanto carga el estilo, sin esperar todas las teselas', () => {
     const alCargar = vi.fn()
     render(<MapaBase alCargar={alCargar} />)
     expect(alCargar).not.toHaveBeenCalled()
 
-    instancias[0].manejadores.load()
+    instancias[0].manejadores['style.load']()
     expect(alCargar).toHaveBeenCalledWith(instancias[0])
+  })
+
+  it('avisa con alFallar si el estilo del mapa base no carga', () => {
+    const alFallar = vi.fn()
+    render(<MapaBase alCargar={() => {}} alFallar={alFallar} />)
+
+    instancias[0].manejadores.error({ error: new Error('Failed to fetch') })
+    expect(alFallar).toHaveBeenCalledTimes(1)
+  })
+
+  it('no avisa por errores de teselas sueltas una vez cargado el estilo', () => {
+    const alFallar = vi.fn()
+    render(<MapaBase alCargar={() => {}} alFallar={alFallar} />)
+
+    instancias[0].manejadores['style.load']()
+    instancias[0].manejadores.error({ error: new Error('tesela 404') })
+    expect(alFallar).not.toHaveBeenCalled()
   })
 
   it('usa la versión más reciente de alCargar sin crear otro mapa', () => {
@@ -73,7 +92,7 @@ describe('MapaBase', () => {
     const { rerender } = render(<MapaBase alCargar={primera} />)
     rerender(<MapaBase alCargar={segunda} />)
 
-    instancias[0].manejadores.load()
+    instancias[0].manejadores['style.load']()
     expect(instancias).toHaveLength(1)
     expect(primera).not.toHaveBeenCalled()
     expect(segunda).toHaveBeenCalledWith(instancias[0])

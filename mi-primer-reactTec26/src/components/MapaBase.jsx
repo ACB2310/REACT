@@ -14,17 +14,20 @@ function sistemaEnModoOscuro() {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false
 }
 
-// Mapa base de MapLibre. Cuando termina de cargar, entrega el mapa con `alCargar(mapa)`
+// Mapa base de MapLibre. En cuanto carga el estilo, entrega el mapa con `alCargar(mapa)`
 // para que otras capas (como CapaSismos) puedan dibujar encima.
-function MapaBase({ alCargar }) {
+// Si el estilo no se puede descargar, avisa con `alFallar()`.
+function MapaBase({ alCargar, alFallar }) {
   const contenedorRef = useRef(null)
 
   // Se guarda la última versión de `alCargar` en una ref para no
   // volver a crear el mapa cada vez que el componente padre se redibuja
   const alCargarRef = useRef(alCargar)
+  const alFallarRef = useRef(alFallar)
   useEffect(() => {
     alCargarRef.current = alCargar
-  }, [alCargar])
+    alFallarRef.current = alFallar
+  }, [alCargar, alFallar])
 
   // Crea el mapa una sola vez y lo elimina al salir de la pantalla.
   // En StrictMode React monta, desmonta y vuelve a montar: por eso es importante `remove()`.
@@ -37,7 +40,18 @@ function MapaBase({ alCargar }) {
     })
     // La atribución de OpenFreeMap y OpenStreetMap la agrega MapLibre por defecto
     mapa.addControl(new NavigationControl({ showCompass: false }), 'top-right')
-    mapa.on('load', () => alCargarRef.current?.(mapa))
+    // Se usa 'style.load' y no 'load': 'load' espera a que bajen todas las teselas,
+    // y con mala señal los sismos tardarían mucho en aparecer
+    let estiloCargado = false
+    mapa.on('style.load', () => {
+      estiloCargado = true
+      alCargarRef.current?.(mapa)
+    })
+    // Antes de cargar el estilo, un error significa que no hay mapa base.
+    // Después, los errores son de teselas sueltas y MapLibre los reintenta solo.
+    mapa.on('error', () => {
+      if (!estiloCargado) alFallarRef.current?.()
+    })
 
     return () => mapa.remove()
   }, [])

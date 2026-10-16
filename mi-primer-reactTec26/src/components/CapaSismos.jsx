@@ -5,6 +5,8 @@ import { formatearFechaHora } from '../utils/fechas.js'
 
 const ID_FUENTE = 'sismos'
 const ID_CAPA = 'sismos-circulos'
+// Capa invisible con círculos más grandes: hace fácil tocar un sismo con el dedo
+const ID_CAPA_TOQUE = 'sismos-toque'
 const COLECCION_VACIA = { type: 'FeatureCollection', features: [] }
 
 // Crea un elemento con texto. Se usa `textContent` (no innerHTML) para que
@@ -17,8 +19,8 @@ function crearElemento(etiqueta, texto) {
 
 // Arma el contenido del popup de un sismo
 function crearContenidoPopup(sismo) {
-  const { mag, place, time, url } = sismo.properties
-  const profundidad = sismo.geometry.coordinates[2]
+  // La profundidad viene en properties (ver agregarProfundidad en utils/sismos.js)
+  const { mag, place, time, url, profundidadKm } = sismo.properties
 
   const contenido = document.createElement('div')
   contenido.className = 'popup-sismo'
@@ -28,8 +30,8 @@ function crearContenidoPopup(sismo) {
     crearElemento('p', formatearFechaHora(time)),
     crearElemento(
       'p',
-      typeof profundidad === 'number'
-        ? `Profundidad: ${Math.round(profundidad)} km`
+      typeof profundidadKm === 'number'
+        ? `Profundidad: ${Math.round(profundidadKm)} km`
         : 'Profundidad: desconocida',
     ),
   )
@@ -64,23 +66,30 @@ function CapaSismos({ mapa, sismos }) {
         'circle-opacity': 0.85,
       },
     })
+    mapa.addLayer({
+      id: ID_CAPA_TOQUE,
+      type: 'circle',
+      source: ID_FUENTE,
+      paint: { 'circle-radius': 16, 'circle-opacity': 0 },
+    })
 
     // Al tocar un círculo se abre el detalle del sismo
     function alHacerClic(evento) {
       const sismo = evento.features?.[0]
       if (!sismo) return
-      // GeoJSON: [longitud, latitud, profundidad]; el popup solo usa las dos primeras
+      // MapLibre entrega [longitud, latitud], en ese orden
       const [longitud, latitud] = sismo.geometry.coordinates
       new Popup({ maxWidth: '280px' })
         .setLngLat([longitud, latitud])
         .setDOMContent(crearContenidoPopup(sismo))
         .addTo(mapa)
     }
-    mapa.on('click', ID_CAPA, alHacerClic)
+    mapa.on('click', ID_CAPA_TOQUE, alHacerClic)
 
     return () => {
-      mapa.off('click', ID_CAPA, alHacerClic)
+      mapa.off('click', ID_CAPA_TOQUE, alHacerClic)
       try {
+        if (mapa.getLayer(ID_CAPA_TOQUE)) mapa.removeLayer(ID_CAPA_TOQUE)
         if (mapa.getLayer(ID_CAPA)) mapa.removeLayer(ID_CAPA)
         if (mapa.getSource(ID_FUENTE)) mapa.removeSource(ID_FUENTE)
       } catch {
