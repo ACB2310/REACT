@@ -60,6 +60,13 @@ describe('CapaCiclones', () => {
     ])
   })
 
+  it('la etiqueta del mapa usa el nombre en español', () => {
+    const mapa = mapaConSismos()
+    render(<CapaCiclones mapa={mapa} nhc={nhcEjemplo} eventosGdacs={null} />)
+
+    expect(mapa.capas['ciclones-nombres'].layout['text-field']).toEqual(['get', 'nombreEtiqueta'])
+  })
+
   it('pinta los puntos de GDACS según su alerta actual', () => {
     const mapa = mapaConSismos()
     render(<CapaCiclones mapa={mapa} nhc={null} eventosGdacs={eventosGdacsEjemplo} />)

@@ -59,6 +59,15 @@ describe('obtenerCiclonesNhc', () => {
     expect(resultado.avisos.features[0].properties.tcww).toBe('TWA')
   })
 
+  it('agrega a cada punto un nombre en español para la etiqueta del mapa', async () => {
+    vi.stubGlobal('fetch', fetchPorCapa(respuestasTrudy))
+
+    const resultado = await obtenerCiclonesNhc()
+
+    expect(resultado.puntos.features[0].properties.nombreEtiqueta).toBe('Huracán Trudy')
+    expect(resultado.puntos.features[0].properties.stormname).toBe('Hurricane Trudy')
+  })
+
   it('falla si NOAA responde con error de ArcGIS', async () => {
     vi.stubGlobal(
       'fetch',

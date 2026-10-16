@@ -1,54 +1,54 @@
 import { useState } from 'react'
 import MapaBase from '../components/MapaBase.jsx'
 import CapaSismos from '../components/CapaSismos.jsx'
+import CapaCiclones from '../components/CapaCiclones.jsx'
+import CapaSatelite from '../components/CapaSatelite.jsx'
 import LeyendaMagnitud from '../components/LeyendaMagnitud.jsx'
+import LeyendaCiclones from '../components/LeyendaCiclones.jsx'
+import MensajeFuente from '../components/MensajeFuente.jsx'
+import PanelCapas from '../components/PanelCapas.jsx'
 import { useSismos } from '../hooks/useSismos.js'
+import { useCiclones } from '../hooks/useCiclones.js'
+import { useSatelite } from '../hooks/useSatelite.js'
 import { formatearFechaHora } from '../utils/fechas.js'
 import './Mapa.css'
 
 const AVISO_OFICIAL =
   'Plataforma informativa. Las indicaciones oficiales de Protección Civil, SMN y SSN tienen prioridad.'
 
-// Decide qué mensaje de estado mostrar arriba del mapa.
-// Devuelve null cuando todo está bien y no hace falta avisar nada.
-function elegirMensaje({ sismos, estado, error, sinConexion, hora }) {
-  if (sinConexion) {
-    return {
-      tipo: 'aviso',
-      texto: sismos
-        ? `Sin conexión. Mostrando datos del ${hora}.`
-        : 'Sin conexión. No hay datos guardados.',
-    }
-  }
-  if (estado === 'error') {
-    return {
-      tipo: 'error',
-      texto: sismos
-        ? `No se pudo actualizar. Mostrando datos del ${hora}.`
-        : `No se pudieron cargar los sismos: ${error}`,
-    }
-  }
-  if (!sismos) return { tipo: 'info', texto: 'Cargando sismos…' }
-  // Hay datos en pantalla y se están pidiendo otros (por ejemplo, tras tocar "Reintentar")
-  if (estado === 'cargando') return { tipo: 'info', texto: 'Actualizando…' }
-  if (sismos.features.length === 0) {
-    return {
-      tipo: 'info',
-      texto: 'No hay sismos de magnitud 2.5 o más en México y alrededores en los últimos 7 días.',
-    }
-  }
-  return null
+// Mientras no haya datos no hay hora que mostrar
+function horaDe(actualizadoEn) {
+  return actualizadoEn === null ? '—' : formatearFechaHora(actualizadoEn)
 }
 
-// Pantalla principal: mapa con los sismos recientes de USGS
+// Texto de un renglón de la lista de ciclones, por ejemplo
+// "Huracán Trudy · categoría 1 · 139 km/h · alerta GDACS naranja"
+function describirCiclon(ciclon) {
+  const partes = [`${ciclon.tipo ?? 'Ciclón tropical'} ${ciclon.nombre}`]
+  if (ciclon.categoria) partes.push(`categoría ${ciclon.categoria}`)
+  if (ciclon.vientoKmh) partes.push(`${ciclon.vientoKmh} km/h`)
+  if (ciclon.alertaGdacs) partes.push(`alerta GDACS ${ciclon.alertaGdacs}`)
+  return partes.join(' · ')
+}
+
+// Pantalla principal: mapa en vivo con sismos, ciclones y satélite
 function Mapa() {
-  const { sismos, estado, error, actualizadoEn, sinConexion, recargar } = useSismos()
+  const sismos = useSismos()
+  const { nhc, gdacs, ciclones, eventosGdacsSinNhc } = useCiclones()
+
+  // Qué capas están prendidas. El satélite empieza apagado para cuidar datos y batería.
+  const [capas, setCapas] = useState({ sismos: true, ciclones: true, satelite: false })
+  const satelite = useSatelite(capas.satelite)
+
   // El mapa de MapLibre llega cuando termina de cargar (ver MapaBase)
   const [mapa, setMapa] = useState(null)
   const [falloMapaBase, setFalloMapaBase] = useState(false)
   // Cambiar este número hace que React cree un MapaBase nuevo (para reintentar)
   const [intentoMapa, setIntentoMapa] = useState(0)
 
+  function cambiarCapa(nombre, valor) {
+    setCapas((anteriores) => ({ ...anteriores, [nombre]: valor }))
+  }
   function alFallarMapaBase() {
     setFalloMapaBase(true)
   }
@@ -58,31 +58,86 @@ function Mapa() {
     setIntentoMapa((intento) => intento + 1)
   }
 
-  // Mientras no haya datos no hay hora que mostrar
-  const hora = actualizadoEn === null ? '—' : formatearFechaHora(actualizadoEn)
-  const total = sismos?.features.length ?? 0
-  const mensaje = elegirMensaje({ sismos, estado, error, sinConexion, hora })
+  // Sin conexión se avisa una sola vez, aunque lo detecten varias fuentes
+  const sinConexion = sismos.sinConexion || nhc.sinConexion || gdacs.sinConexion
+  const hayAlgunDato = Boolean(sismos.sismos || nhc.datos || gdacs.datos)
+
+  const totalSismos = sismos.sismos?.features.length ?? 0
+  const semanaSinSismos = sismos.estado === 'listo' && totalSismos === 0
+  // Solo se dice que no hay ciclones si las DOS fuentes respondieron bien y vacías
+  const sinCiclones = nhc.estado === 'listo' && gdacs.estado === 'listo' && ciclones.length === 0
 
   return (
     <div className="pantalla-mapa">
       <header className="barra-superior">
-        <h1>Sismos recientes</h1>
-        {total > 0 && (
+        <h1>Mapa en vivo</h1>
+        {totalSismos > 0 && (
           <p className="conteo">
-            {total === 1 ? '1 sismo' : `${total} sismos`} en los últimos 7 días
+            {totalSismos === 1 ? '1 sismo' : `${totalSismos} sismos`} en los últimos 7 días
           </p>
         )}
-        {mensaje && (
-          <div
-            className={`mensaje-estado mensaje-${mensaje.tipo}`}
-            role={mensaje.tipo === 'error' ? 'alert' : 'status'}
-          >
-            <p>{mensaje.texto}</p>
-            {estado === 'error' && (
-              <button type="button" className="boton-reintentar" onClick={recargar}>
-                Reintentar
-              </button>
+        {ciclones.length > 0 && (
+          <ul className="lista-ciclones" aria-label="Ciclones activos">
+            {ciclones.map((ciclon) => (
+              <li key={ciclon.id}>{describirCiclon(ciclon)}</li>
+            ))}
+          </ul>
+        )}
+        {sinCiclones && <p className="conteo">Sin ciclones activos cerca de México según NHC y GDACS.</p>}
+
+        {sinConexion ? (
+          <div className="mensaje-estado mensaje-aviso" role="status">
+            <p>
+              {hayAlgunDato
+                ? 'Sin conexión. Se muestran los últimos datos descargados.'
+                : 'Sin conexión. No hay datos guardados.'}
+            </p>
+          </div>
+        ) : (
+          <>
+            <MensajeFuente
+              etiqueta="los sismos"
+              plural
+              estado={sismos.estado}
+              error={sismos.error}
+              hayDatos={Boolean(sismos.sismos)}
+              hora={horaDe(sismos.actualizadoEn)}
+              recargar={sismos.recargar}
+            />
+            <MensajeFuente
+              etiqueta="los ciclones de NHC"
+              plural
+              estado={nhc.estado}
+              error={nhc.error}
+              hayDatos={Boolean(nhc.datos)}
+              hora={horaDe(nhc.actualizadoEn)}
+              recargar={nhc.recargar}
+            />
+            <MensajeFuente
+              etiqueta="los ciclones de GDACS"
+              plural
+              estado={gdacs.estado}
+              error={gdacs.error}
+              hayDatos={Boolean(gdacs.datos)}
+              hora={horaDe(gdacs.actualizadoEn)}
+              recargar={gdacs.recargar}
+            />
+            {capas.satelite && (
+              <MensajeFuente
+                etiqueta="la imagen de satélite"
+                plural={false}
+                estado={satelite.estado}
+                error={satelite.error}
+                hayDatos={Boolean(satelite.datos)}
+                hora={horaDe(satelite.actualizadoEn)}
+                recargar={satelite.recargar}
+              />
             )}
+          </>
+        )}
+        {semanaSinSismos && (
+          <div className="mensaje-estado mensaje-info" role="status">
+            <p>No hay sismos de magnitud 2.5 o más en México y alrededores en los últimos 7 días.</p>
           </div>
         )}
         {falloMapaBase && (
@@ -97,12 +152,25 @@ function Mapa() {
 
       <div className="contenedor-mapa">
         <MapaBase key={intentoMapa} alCargar={setMapa} alFallar={alFallarMapaBase} />
-        <CapaSismos mapa={mapa} sismos={sismos} />
+        <CapaSatelite mapa={mapa} hora={satelite.datos} visible={capas.satelite} />
+        <CapaCiclones mapa={mapa} nhc={nhc.datos} eventosGdacs={eventosGdacsSinNhc} visible={capas.ciclones} />
+        <CapaSismos mapa={mapa} sismos={sismos.sismos} visible={capas.sismos} />
+        <PanelCapas capas={capas} alCambiar={cambiarCapa} />
       </div>
 
       <footer className="pie">
-        <LeyendaMagnitud />
-        <p className="fuente">Fuente: USGS · Actualizado: {hora}</p>
+        <details className="leyendas">
+          <summary>Leyenda</summary>
+          <LeyendaMagnitud />
+          <LeyendaCiclones />
+        </details>
+        <p className="fuente">Sismos: USGS · {horaDe(sismos.actualizadoEn)}</p>
+        <p className="fuente">
+          Ciclones: NHC/NOAA · {horaDe(nhc.actualizadoEn)} · GDACS · {horaDe(gdacs.actualizadoEn)}
+        </p>
+        {capas.satelite && (
+          <p className="fuente">Satélite: NASA GIBS (GOES-East) · {horaDe(satelite.actualizadoEn)}</p>
+        )}
         <p className="aviso-oficial">{AVISO_OFICIAL}</p>
       </footer>
     </div>

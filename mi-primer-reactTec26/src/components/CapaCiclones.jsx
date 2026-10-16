@@ -129,7 +129,8 @@ function CapaCiclones({ mapa, nhc, eventosGdacs, visible = true }) {
         source: 'ciclones-puntos',
         filter: ['==', ['get', 'tau'], 0],
         layout: {
-          'text-field': ['get', 'stormname'],
+          // Nombre en español que agrega services/nhc.js ("Huracán Trudy")
+          'text-field': ['get', 'nombreEtiqueta'],
           'text-font': ['Noto Sans Bold'],
           'text-size': 14,
           'text-offset': [0, 1.4],

@@ -120,7 +120,85 @@
   border-radius: 50%;
 }
 
-/* Popup del sismo: MapLibre lo pinta con fondo blanco, así que el texto va oscuro */
+/* Símbolos de la leyenda de ciclones */
+.leyenda-color-gdacs {
+  border: 2px solid #111827;
+}
+
+.leyenda-linea {
+  width: 20px;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.leyenda-linea-punteada {
+  background: repeating-linear-gradient(90deg, var(--texto) 0 4px, transparent 4px 8px);
+}
+
+.leyenda-cono {
+  width: 20px;
+  height: 14px;
+  border: 1.5px solid #374151;
+  border-radius: 50% 50% 4px 4px;
+  background-color: rgb(255 255 255 / 0.6);
+}
+
+/* Leyenda plegable para que no ocupe espacio en pantallas pequeñas */
+.leyendas summary {
+  min-height: 32px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.leyendas[open] {
+  display: grid;
+  gap: 6px;
+}
+
+/* Lista de ciclones activos debajo del título */
+.lista-ciclones {
+  list-style: none;
+  font-weight: 600;
+}
+
+/* Casillas para prender y apagar capas, encima del mapa */
+.panel-capas {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 1;
+  display: grid;
+  padding: 4px 8px;
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+  background-color: var(--superficie);
+  color: var(--texto);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.2);
+}
+
+.panel-capas-titulo {
+  padding: 0 4px;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.panel-capas-opcion {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* Alto suficiente para tocar con el dedo */
+  min-height: 48px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.panel-capas-opcion input {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--primario);
+}
+
+/* Popup del mapa: MapLibre lo pinta con fondo blanco, así que el texto va oscuro */
 .popup-mapa {
   display: grid;
   gap: 2px;

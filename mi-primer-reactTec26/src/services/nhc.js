@@ -1,6 +1,6 @@
 import { obtenerJson } from './http.js'
 import { dentroDeCaja } from '../utils/geo.js'
-import { BBOX_CICLONES } from '../utils/ciclones.js'
+import { BBOX_CICLONES, nombreCorto, nombreTipoCiclon } from '../utils/ciclones.js'
 
 // Servicio oficial de NOAA que republica los productos GIS del NHC (Centro
 // Nacional de Huracanes de EE. UU.) en GeoJSON. A diferencia de CurrentStorms.json,
@@ -47,8 +47,22 @@ export async function obtenerCiclonesNhc({ signal } = {}) {
       .map((p) => p.properties.binnumber),
   )
 
+  // NOAA manda el nombre en inglés ("Hurricane Trudy"); para la etiqueta del mapa
+  // se agrega uno en español ("Huracán Trudy")
+  const puntosCercanos = soloDeLasTormentas(puntos, bins)
+  const puntosConEtiqueta = {
+    ...puntosCercanos,
+    features: puntosCercanos.features.map((punto) => ({
+      ...punto,
+      properties: {
+        ...punto.properties,
+        nombreEtiqueta: `${nombreTipoCiclon(punto.properties.stormtype)} ${nombreCorto(punto.properties.stormname)}`,
+      },
+    })),
+  }
+
   const resultado = {
-    puntos: soloDeLasTormentas(puntos, bins),
+    puntos: puntosConEtiqueta,
     trayectorias: soloDeLasTormentas(trayectorias, bins),
     conos: soloDeLasTormentas(conos, bins),
     avisos: soloDeLasTormentas(avisos, bins),

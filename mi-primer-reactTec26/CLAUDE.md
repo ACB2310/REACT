@@ -66,13 +66,18 @@ Reglas:
 | Fuente | Datos | Llave | Dónde se consume |
 |---|---|---|---|
 | USGS (`earthquake.usgs.gov/earthquakes/feed/v1.0/`) | Sismos en GeoJSON | No | Frontend |
-| GDACS (`gdacs.org`) | Huracanes, inundaciones, alertas globales | No | Frontend o Edge Function |
-| NHC (`nhc.noaa.gov/CurrentStorms.json`, productos GIS) | Huracanes, conos de pronóstico | No | **Edge Function** (CORS) |
+| GDACS (`gdacs.org/gdacsapi`, `geteventlist`) | Huracanes (nivel de alerta), inundaciones, alertas globales | No | Frontend (tiene CORS) |
+| NOAA mapservices `NHC_tropical_weather_summary` (ArcGIS, GeoJSON, CORS) | Huracanes del NHC: cono, trayectoria, puntos de pronóstico, avisos en costa | No | Frontend |
 | SMN – Conagua (feed CAP) | Avisos oficiales de ciclones en México | No | Edge Function |
 | Open-Meteo (Marine y Forecast API) | Clima, oleaje, corrientes | No | Frontend |
-| NASA GIBS (WMTS) | Teselas de satélite GOES / VIIRS | No | Frontend (capa del mapa) |
+| NASA GIBS (WMTS) | Teselas de satélite `GOES-East_ABI_GeoColor`; la hora se obtiene con `HEAD` + cabecera `Layer-Time-Actual` | No | Frontend (capa del mapa) |
 | NASA FIRMS | Incendios | Sí | Edge Function |
 | OpenRouteService | Rutas en carro y a pie, `avoid_polygons`, matrices, isócronas | Sí | **Edge Function** |
+
+Notas sobre ciclones (decisión del 2026-10-16):
+- `nhc.noaa.gov/CurrentStorms.json` **no tiene CORS**, por eso no se usa. Los mismos datos del NHC se leen desde el servicio de NOAA en `mapservices.weather.noaa.gov`, capas 5 a 8 del servicio de resumen.
+- Una tormenta puede aparecer solo en NHC o solo en GDACS; `utils/ciclones.js` las combina sin duplicar.
+- Nunca mostrar "Sin ciclones activos" si alguna de las dos fuentes falló o sigue cargando.
 
 Toda geometría se maneja en **GeoJSON con coordenadas `[longitud, latitud]`** (EPSG:4326). Cuidado con no invertir el orden.
 
