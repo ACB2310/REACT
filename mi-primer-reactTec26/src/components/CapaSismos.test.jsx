@@ -3,77 +3,12 @@ import { render } from '@testing-library/react'
 import CapaSismos from './CapaSismos.jsx'
 import { sismosEjemplo } from '../mocks/sismosEjemplo.js'
 import { agregarProfundidad } from '../utils/sismos.js'
+import { popups } from '../test/maplibreFalso.js'
+import { crearMapaFalso, comoLoDevuelveMapLibre } from '../test/mapaFalso.js'
 
-// Se captura cada Popup que crea el componente
-const { popups } = vi.hoisted(() => ({ popups: [] }))
-vi.mock('maplibre-gl', () => {
-  class Popup {
-    constructor(opciones) {
-      this.opciones = opciones
-      popups.push(this)
-    }
-    setLngLat(coordenadas) {
-      this.lngLat = coordenadas
-      return this
-    }
-    setDOMContent(elemento) {
-      this.contenido = elemento
-      return this
-    }
-    addTo(mapa) {
-      this.mapa = mapa
-      return this
-    }
-  }
-  return { Popup }
-})
-
-// Mapa falso que guarda fuentes, capas y manejadores como lo haría MapLibre
-function crearMapaFalso() {
-  const fuentes = {}
-  const capas = {}
-  const manejadores = {}
-  return {
-    fuentes,
-    capas,
-    manejadores,
-    addSource: vi.fn((id, definicion) => {
-      fuentes[id] = { definicion, setData: vi.fn() }
-    }),
-    getSource: vi.fn((id) => fuentes[id]),
-    removeSource: vi.fn((id) => {
-      delete fuentes[id]
-    }),
-    addLayer: vi.fn((capa) => {
-      capas[capa.id] = capa
-    }),
-    getLayer: vi.fn((id) => capas[id]),
-    removeLayer: vi.fn((id) => {
-      delete capas[id]
-    }),
-    // MapLibre acepta on(evento, manejador) y on(evento, idCapa, manejador)
-    on: vi.fn((evento, capaOManejador, manejador) => {
-      if (manejador) manejadores[`${evento}:${capaOManejador}`] = manejador
-      else manejadores[evento] = capaOManejador
-    }),
-    off: vi.fn((evento, capaOManejador, manejador) => {
-      if (manejador) delete manejadores[`${evento}:${capaOManejador}`]
-      else delete manejadores[evento]
-    }),
-  }
-}
+vi.mock('maplibre-gl', () => import('../test/maplibreFalso.js'))
 
 const sismosPreparados = agregarProfundidad(sismosEjemplo)
-
-// MapLibre no entrega el GeoJSON original al hacer clic: solo [lon, lat]
-// (sin profundidad) y sin las propiedades que valen null
-function comoLoDevuelveMapLibre(sismo) {
-  const [longitud, latitud] = sismo.geometry.coordinates
-  const properties = Object.fromEntries(
-    Object.entries(sismo.properties).filter(([, valor]) => valor !== null),
-  )
-  return { type: 'Feature', geometry: { type: 'Point', coordinates: [longitud, latitud] }, properties }
-}
 
 const sismoGuerrero = comoLoDevuelveMapLibre(sismosPreparados.features[1])
 const sismoSinMagnitud = comoLoDevuelveMapLibre(sismosPreparados.features[3])
@@ -213,6 +148,16 @@ describe('CapaSismos', () => {
     unmount()
 
     expect(mapa.off).toHaveBeenCalledWith('style.load', manejador)
+  })
+
+  it('oculta los sismos con visible false', () => {
+    const mapa = crearMapaFalso()
+    const { rerender } = render(<CapaSismos mapa={mapa} sismos={sismosEjemplo} />)
+    expect(mapa.capas['sismos-circulos'].layout.visibility).toBe('visible')
+
+    rerender(<CapaSismos mapa={mapa} sismos={sismosEjemplo} visible={false} />)
+    expect(mapa.capas['sismos-circulos'].layout.visibility).toBe('none')
+    expect(mapa.capas['sismos-toque'].layout.visibility).toBe('none')
   })
 
   it('limpia capa, fuente y listener al desmontar', () => {

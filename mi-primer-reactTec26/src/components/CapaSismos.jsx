@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import { Popup } from 'maplibre-gl'
 import { expresionColorMagnitud, etiquetaMagnitud } from '../utils/sismos.js'
 import { formatearFechaHora } from '../utils/fechas.js'
+import { useCapasMapa } from '../hooks/useCapasMapa.js'
 
 const ID_FUENTE = 'sismos'
 const ID_CAPA = 'sismos-circulos'
@@ -48,24 +49,25 @@ function crearContenidoPopup(sismo) {
 
 // Dibuja los sismos como círculos sobre el mapa.
 // No muestra nada en React (devuelve null): todo se dibuja dentro de MapLibre.
-function CapaSismos({ mapa, sismos }) {
-  // Guarda los sismos más recientes para volver a dibujarlos si cambia el estilo del mapa
-  const sismosRef = useRef(sismos)
-  useEffect(() => {
-    sismosRef.current = sismos
-  }, [sismos])
+function CapaSismos({ mapa, sismos, visible = true }) {
+  // Al tocar un círculo se abre el detalle del sismo
+  function alHacerClic(evento) {
+    const sismo = evento.features?.[0]
+    if (!sismo) return
+    // MapLibre entrega [longitud, latitud], en ese orden
+    const [longitud, latitud] = sismo.geometry.coordinates
+    new Popup({ maxWidth: '280px' })
+      .setLngLat([longitud, latitud])
+      .setDOMContent(crearContenidoPopup(sismo))
+      .addTo(mapa)
+  }
 
-  // Agrega la fuente y la capa cuando el mapa está listo, y las quita al salir
-  useEffect(() => {
-    if (!mapa) return
-
-    // Agrega fuente y capas si no existen. Se llama al inicio y cada vez que el
-    // mapa carga un estilo nuevo (por ejemplo, al pasar a modo oscuro), porque
-    // MapLibre borra las capas propias al cambiar de estilo.
-    function agregarCapas() {
-      if (mapa.getSource(ID_FUENTE)) return
-      mapa.addSource(ID_FUENTE, { type: 'geojson', data: sismosRef.current ?? COLECCION_VACIA })
-      mapa.addLayer({
+  // useCapasMapa agrega la fuente y las capas, las vuelve a poner si cambia
+  // el estilo del mapa y las quita al salir de la pantalla
+  useCapasMapa(mapa, {
+    fuentes: [{ id: ID_FUENTE, definicion: () => ({ type: 'geojson', data: sismos ?? COLECCION_VACIA }) }],
+    capas: [
+      {
         id: ID_CAPA,
         type: 'circle',
         source: ID_FUENTE,
@@ -77,42 +79,17 @@ function CapaSismos({ mapa, sismos }) {
           'circle-stroke-width': 1,
           'circle-opacity': 0.85,
         },
-      })
-      mapa.addLayer({
+      },
+      {
         id: ID_CAPA_TOQUE,
         type: 'circle',
         source: ID_FUENTE,
         paint: { 'circle-radius': 16, 'circle-opacity': 0 },
-      })
-    }
-    agregarCapas()
-    mapa.on('style.load', agregarCapas)
-
-    // Al tocar un círculo se abre el detalle del sismo
-    function alHacerClic(evento) {
-      const sismo = evento.features?.[0]
-      if (!sismo) return
-      // MapLibre entrega [longitud, latitud], en ese orden
-      const [longitud, latitud] = sismo.geometry.coordinates
-      new Popup({ maxWidth: '280px' })
-        .setLngLat([longitud, latitud])
-        .setDOMContent(crearContenidoPopup(sismo))
-        .addTo(mapa)
-    }
-    mapa.on('click', ID_CAPA_TOQUE, alHacerClic)
-
-    return () => {
-      mapa.off('style.load', agregarCapas)
-      mapa.off('click', ID_CAPA_TOQUE, alHacerClic)
-      try {
-        if (mapa.getLayer(ID_CAPA_TOQUE)) mapa.removeLayer(ID_CAPA_TOQUE)
-        if (mapa.getLayer(ID_CAPA)) mapa.removeLayer(ID_CAPA)
-        if (mapa.getSource(ID_FUENTE)) mapa.removeSource(ID_FUENTE)
-      } catch {
-        // Si MapaBase ya eliminó el mapa, no queda nada que limpiar
-      }
-    }
-  }, [mapa])
+      },
+    ],
+    clics: { [ID_CAPA_TOQUE]: alHacerClic },
+    visible,
+  })
 
   // Cuando llegan sismos nuevos, se actualizan los datos de la fuente
   useEffect(() => {
