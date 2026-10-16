@@ -1,0 +1,5 @@
+/* El mapa ocupa todo el espacio de su contenedor */
+.mapa-base {
+  width: 100%;
+  height: 100%;
+}
