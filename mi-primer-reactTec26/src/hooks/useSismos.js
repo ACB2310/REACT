@@ -35,6 +35,8 @@ export function useSismos() {
         setActualizadoEn(generadoEn)
         setError(null)
         setEstado('listo')
+        // Si la descarga funcionó, hay conexión (por si el evento 'online' no llegó)
+        setSinConexion(false)
       } catch (e) {
         // Una cancelación no es un error que haya que mostrar
         if (e.name === 'AbortError' || actual.signal.aborted) return

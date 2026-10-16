@@ -16,7 +16,7 @@ function elegirMensaje({ sismos, estado, error, sinConexion, hora }) {
     return {
       tipo: 'aviso',
       texto: sismos
-        ? `Sin conexión. Mostrando datos de las ${hora}.`
+        ? `Sin conexión. Mostrando datos del ${hora}.`
         : 'Sin conexión. No hay datos guardados.',
     }
   }
@@ -24,11 +24,13 @@ function elegirMensaje({ sismos, estado, error, sinConexion, hora }) {
     return {
       tipo: 'error',
       texto: sismos
-        ? `No se pudo actualizar. Mostrando datos de las ${hora}.`
+        ? `No se pudo actualizar. Mostrando datos del ${hora}.`
         : `No se pudieron cargar los sismos: ${error}`,
     }
   }
   if (!sismos) return { tipo: 'info', texto: 'Cargando sismos…' }
+  // Hay datos en pantalla y se están pidiendo otros (por ejemplo, tras tocar "Reintentar")
+  if (estado === 'cargando') return { tipo: 'info', texto: 'Actualizando…' }
   if (sismos.features.length === 0) {
     return {
       tipo: 'info',
@@ -56,7 +58,8 @@ function Mapa() {
     setIntentoMapa((intento) => intento + 1)
   }
 
-  const hora = formatearFechaHora(actualizadoEn)
+  // Mientras no haya datos no hay hora que mostrar
+  const hora = actualizadoEn === null ? '—' : formatearFechaHora(actualizadoEn)
   const total = sismos?.features.length ?? 0
   const mensaje = elegirMensaje({ sismos, estado, error, sinConexion, hora })
 

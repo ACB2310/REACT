@@ -102,6 +102,22 @@ describe('useSismos', () => {
     expect(obtenerSismos).toHaveBeenCalledTimes(2)
   })
 
+  // En algunos celulares el evento 'online' no llega: si una descarga funciona, hay conexión
+  it('una descarga exitosa quita el aviso de sin conexión', async () => {
+    obtenerSismos.mockResolvedValue(resultadoEjemplo)
+    const { result } = renderHook(() => useSismos())
+    await esperarPromesas()
+    act(() => {
+      window.dispatchEvent(new Event('offline'))
+    })
+    expect(result.current.sinConexion).toBe(true)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300000)
+    })
+    expect(result.current.sinConexion).toBe(false)
+  })
+
   it('aborta la petición al desmontar', async () => {
     let senal
     obtenerSismos.mockImplementation(({ signal }) => {

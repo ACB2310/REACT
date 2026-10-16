@@ -87,7 +87,7 @@ describe('Página Mapa', () => {
     simularHook({ estado: 'error', error: 'USGS respondió 500', sismos: dosSismos, actualizadoEn: 1700000000000 })
     render(<Mapa />)
 
-    expect(screen.getByText(/^No se pudo actualizar\. Mostrando datos de las /)).toHaveTextContent(HORA)
+    expect(screen.getByText(/^No se pudo actualizar\. Mostrando datos del /)).toHaveTextContent(HORA)
     expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument()
     expect(screen.getByText('2 sismos en los últimos 7 días')).toBeInTheDocument()
     expect(screen.getByTestId('mapa')).toBeInTheDocument()
@@ -96,7 +96,7 @@ describe('Página Mapa', () => {
   it('sin conexión muestra la hora de los últimos datos', () => {
     simularHook({ estado: 'listo', sinConexion: true, sismos: dosSismos, actualizadoEn: 1700000000000 })
     render(<Mapa />)
-    expect(screen.getByText(/^Sin conexión\. Mostrando datos de las /)).toHaveTextContent(HORA)
+    expect(screen.getByText(/^Sin conexión\. Mostrando datos del /)).toHaveTextContent(HORA)
   })
 
   it('sin conexión y sin datos lo dice claramente', () => {
@@ -129,6 +129,19 @@ describe('Página Mapa', () => {
     simularHook({ estado: 'listo', sismos: dosSismos, actualizadoEn: 1700000000000 })
     render(<Mapa />)
     expect(screen.getByText(/^Fuente: USGS · Actualizado: /)).toHaveTextContent(HORA)
+  })
+
+  it('al reintentar con datos en pantalla muestra Actualizando…', () => {
+    simularHook({ estado: 'cargando', sismos: dosSismos, actualizadoEn: 1700000000000 })
+    render(<Mapa />)
+    expect(screen.getByText('Actualizando…')).toBeInTheDocument()
+  })
+
+  it('sin datos todavía el pie no dice "sin fecha"', () => {
+    simularHook({})
+    render(<Mapa />)
+    expect(screen.getByText('Fuente: USGS · Actualizado: —')).toBeInTheDocument()
+    expect(screen.queryByText(/sin fecha/)).not.toBeInTheDocument()
   })
 
   it('muestra la leyenda de magnitudes', () => {
