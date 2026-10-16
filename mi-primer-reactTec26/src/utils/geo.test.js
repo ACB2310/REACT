@@ -20,6 +20,12 @@ describe('distanciaPuntoSegmentoKm', () => {
     expect(distanciaPuntoSegmentoKm([-99.9, 17.0], [-99.7, 16.92], [-99.9, 16.95])).toBeCloseTo(5.56, 1)
   })
 
+  it('un tramo de un solo punto (a == b) mide hasta ese punto sin dar NaN', () => {
+    const km = distanciaPuntoSegmentoKm([-100.31, 25.68], [-100.31, 25.67], [-100.31, 25.67])
+    expect(Number.isNaN(km)).toBe(false)
+    expect(km).toBeCloseTo(1.11, 1)
+  })
+
   it('si el punto queda más allá de un extremo, mide hasta ese extremo', () => {
     // A 0.01° al norte del extremo [-100.31, 25.67]: ~1.11 km
     expect(distanciaPuntoSegmentoKm([-100.31, 25.68], [-100.31, 25.67], [-100.30, 25.67])).toBeCloseTo(1.11, 1)

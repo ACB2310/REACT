@@ -26,6 +26,22 @@ describe('crearColaPrioridad', () => {
     expect(cola.sacarMinimo()).toBeUndefined()
   })
 
+  // Así la usa Dijkstra: saca un nodo y agrega sus vecinos, una y otra vez
+  it('sigue entregando el mínimo al agregar y sacar intercalado', () => {
+    const cola = crearColaPrioridad()
+    cola.agregar('a', 4)
+    cola.agregar('b', 2)
+    expect(cola.sacarMinimo().valor).toBe('b')
+    cola.agregar('c', 1)
+    cola.agregar('d', 5)
+    expect(cola.sacarMinimo().valor).toBe('c')
+    cola.agregar('e', 3)
+    expect(cola.sacarMinimo().valor).toBe('e')
+    expect(cola.sacarMinimo().valor).toBe('a')
+    expect(cola.sacarMinimo().valor).toBe('d')
+    expect(cola.estaVacia()).toBe(true)
+  })
+
   it('ordena bien muchos elementos agregados en desorden', () => {
     const cola = crearColaPrioridad()
     const numeros = [42, 7, 19, 3, 88, 3, 51, 0, 26, 14, 9, 65]
