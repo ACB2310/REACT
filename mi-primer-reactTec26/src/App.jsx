@@ -1,11 +1,7 @@
-import './App.css'
+import Mapa from './pages/Mapa.jsx'
 
 function App() {
-  return (
-    <main>
-      <h1>Mi primer proyecto de React</h1>
-    </main>
-  )
+  return <Mapa />
 }
 
 export default App

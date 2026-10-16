@@ -1,39 +1,53 @@
-*{
+/* Colores de la app. En modo oscuro se redefinen abajo. */
+:root {
+  --fondo: #f3f4f6;
+  --superficie: #ffffff;
+  --texto: #111827;
+  --texto-suave: #4b5563;
+  --borde: #d1d5db;
+  --primario: #1d4ed8;
+  --error-fondo: #fee2e2;
+  --error-texto: #7f1d1d;
+  --aviso-fondo: #fef3c7;
+  --aviso-texto: #78350f;
+  --info-fondo: #dbeafe;
+  --info-texto: #1e3a8a;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fondo: #030712;
+    --superficie: #111827;
+    --texto: #f9fafb;
+    --texto-suave: #d1d5db;
+    --borde: #374151;
+    --primario: #60a5fa;
+    --error-fondo: #450a0a;
+    --error-texto: #fecaca;
+    --aviso-fondo: #451a03;
+    --aviso-texto: #fde68a;
+    --info-fondo: #172554;
+    --info-texto: #bfdbfe;
+  }
+}
+
+* {
   margin: 0;
   padding: 0;
-  box-sizing:border-box;
+  box-sizing: border-box;
 }
 
-body{
-  min-height: 100vh;
-  font-family: Arial, sans-serif;
-  background-color: #f3f4f6;
-  color: #1f2937;
+html,
+body,
+#root {
+  height: 100%;
 }
 
-main{
-  width: 90%;
-  max-width: 700px;
-  margin:80px auto;
-  padding: 32px;
-  border-radius: 16px;
-  background-color: white;
-  text-align: center;
-}
-
-h1{
-  margin-bottom: 16px;
-}
-
-p{
-  margin-bottom: 24px;
-}
-
-button{
-  padding: 12px 20px;
-  border: none;
-  border-radius: 8px;
-  background-color: #2563eb;
-  color: white;
-  cursor: pointer;
+body {
+  font-family: system-ui, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.4;
+  background-color: var(--fondo);
+  color: var(--texto);
 }
