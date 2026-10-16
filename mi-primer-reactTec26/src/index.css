@@ -1,0 +1,39 @@
+*{
+  margin: 0;
+  padding: 0;
+  box-sizing:border-box;
+}
+
+body{
+  min-height: 100vh;
+  font-family: Arial, sans-serif;
+  background-color: #f3f4f6;
+  color: #1f2937;
+}
+
+main{
+  width: 90%;
+  max-width: 700px;
+  margin:80px auto;
+  padding: 32px;
+  border-radius: 16px;
+  background-color: white;
+  text-align: center;
+}
+
+h1{
+  margin-bottom: 16px;
+}
+
+p{
+  margin-bottom: 24px;
+}
+
+button{
+  padding: 12px 20px;
+  border: none;
+  border-radius: 8px;
+  background-color: #2563eb;
+  color: white;
+  cursor: pointer;
+}
