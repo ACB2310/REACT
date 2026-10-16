@@ -1,5 +1,30 @@
 import { describe, it, expect } from 'vitest'
-import { dentroDeCaja } from './geo.js'
+import { dentroDeCaja, distanciaMetros, distanciaPuntoSegmentoKm } from './geo.js'
+
+describe('distanciaMetros', () => {
+  // Valor calculado a mano con haversine: 0.005° de longitud a 25.67° de latitud
+  it('mide la distancia entre dos puntos [lon, lat] en metros', () => {
+    expect(distanciaMetros([-100.31, 25.67], [-100.305, 25.67])).toBeCloseTo(501.1, 0)
+  })
+
+  it('una distancia con [lat, lon] invertido da otro valor', () => {
+    const correcta = distanciaMetros([-100.31, 25.67], [-100.305, 25.67])
+    const invertida = distanciaMetros([25.67, -100.31], [25.67, -100.305])
+    expect(Math.abs(invertida - correcta)).toBeGreaterThan(10)
+  })
+})
+
+describe('distanciaPuntoSegmentoKm', () => {
+  // Epicentro de gro1 contra el camino directo del escenario de Acapulco
+  it('mide la distancia más corta de un punto a un tramo en km', () => {
+    expect(distanciaPuntoSegmentoKm([-99.9, 17.0], [-99.7, 16.92], [-99.9, 16.95])).toBeCloseTo(5.56, 1)
+  })
+
+  it('si el punto queda más allá de un extremo, mide hasta ese extremo', () => {
+    // A 0.01° al norte del extremo [-100.31, 25.67]: ~1.11 km
+    expect(distanciaPuntoSegmentoKm([-100.31, 25.68], [-100.31, 25.67], [-100.30, 25.67])).toBeCloseTo(1.11, 1)
+  })
+})
 
 const CAJA = [-118.5, 14.0, -86.0, 33.0]
 
