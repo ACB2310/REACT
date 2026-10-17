@@ -17,6 +17,43 @@ export class Popup {
   }
   addTo(mapa) {
     this.mapa = mapa
+    this.abierto = true
+    return this
+  }
+  remove() {
+    this.abierto = false
+    return this
+  }
+}
+
+// Marcador falso: guarda su posición y permite simular que lo arrastran
+export const marcadores = []
+
+export class Marker {
+  constructor(opciones) {
+    this.opciones = opciones
+    this.manejadores = {}
+    marcadores.push(this)
+  }
+  setLngLat(coordenadas) {
+    this.lngLat = coordenadas
+    return this
+  }
+  getLngLat() {
+    const [lng, lat] = this.lngLat
+    return { lng, lat }
+  }
+  addTo(mapa) {
+    this.mapa = mapa
+    this.agregado = true
+    return this
+  }
+  on(evento, manejador) {
+    this.manejadores[evento] = manejador
+    return this
+  }
+  remove() {
+    this.agregado = false
     return this
   }
 }

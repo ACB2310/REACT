@@ -1,8 +1,10 @@
 /* Pantalla completa: barra arriba, mapa en medio y pie abajo */
 .pantalla-mapa {
   display: grid;
-  grid-template-rows: auto 1fr auto;
-  height: 100dvh;
+  /* El mapa nunca baja de 300 px: si hay muchos avisos, la pantalla hace scroll */
+  grid-template-rows: auto minmax(300px, 1fr) auto;
+  /* Ocupa al menos el espacio que deja la barra de navegación (ver App.css) */
+  min-height: 100%;
 }
 
 .barra-superior,
@@ -23,54 +25,11 @@
   color: var(--texto-suave);
 }
 
-/* Mensajes de estado: cargando, error, sin conexión */
-.mensaje-estado {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
-  margin-top: 8px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  font-weight: 600;
-}
-
-.mensaje-info {
-  background-color: var(--info-fondo);
-  color: var(--info-texto);
-}
-
-.mensaje-aviso {
-  background-color: var(--aviso-fondo);
-  color: var(--aviso-texto);
-}
-
-.mensaje-error {
-  background-color: var(--error-fondo);
-  color: var(--error-texto);
-}
-
-/* Botón grande para tocar con el dedo, aunque haya prisa */
-.boton-reintentar {
-  min-height: 48px;
-  padding: 0 20px;
-  border: none;
-  border-radius: 8px;
-  background-color: var(--primario);
-  color: var(--superficie);
-  font-size: 1rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.boton-reintentar:focus-visible {
-  outline: 3px solid var(--texto);
-  outline-offset: 2px;
-}
-
 .contenedor-mapa {
   position: relative;
   min-height: 0;
+  /* El panel de capas y el botón de reportar no se salen del mapa */
+  overflow: hidden;
 }
 
 .pie {
@@ -168,6 +127,9 @@
   left: 8px;
   z-index: 1;
   display: grid;
+  /* Dos columnas para que las 5 capas quepan en mapas bajitos */
+  grid-template-columns: repeat(2, auto);
+  column-gap: 12px;
   padding: 4px 8px;
   border: 1px solid var(--borde);
   border-radius: 8px;
@@ -177,6 +139,7 @@
 }
 
 .panel-capas-titulo {
+  grid-column: 1 / -1;
   padding: 0 4px;
   font-size: 0.8125rem;
   font-weight: 700;
@@ -219,4 +182,72 @@
   height: 44px;
   font-size: 1.75rem;
   line-height: 1;
+}
+
+/* Botones dentro del popup de un bloqueo (Renovar, Eliminar) */
+.popup-botones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.popup-boton {
+  flex: 1 1 auto;
+  min-height: 48px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 8px;
+  background-color: #1d4ed8;
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.popup-boton-peligro {
+  background-color: #b91c1c;
+}
+
+.popup-boton:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.popup-boton:focus-visible {
+  outline: 3px solid #111827;
+  outline-offset: 2px;
+}
+
+.popup-error {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.popup-error:empty {
+  display: none;
+}
+
+/* Botón flotante para reportar un bloqueo, abajo a la derecha (al alcance del pulgar) */
+.boton-reportar {
+  position: absolute;
+  right: 12px;
+  bottom: 36px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  min-height: 56px;
+  padding: 0 20px;
+  border-radius: 28px;
+  background-color: #b91c1c;
+  color: #ffffff;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.35);
+}
+
+.boton-reportar:focus-visible {
+  outline: 3px solid var(--texto);
+  outline-offset: 3px;
 }

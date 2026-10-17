@@ -86,3 +86,24 @@ describe('useDatosPeriodicos', () => {
     expect(obtener).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('useDatosPeriodicos: recarga silenciosa', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    obtener.mockReset()
+    obtener.mockResolvedValue({ datos: ['a'], actualizadoEn: 1 })
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('recargar({ silencioso: true }) pide de nuevo sin pasar a "cargando"', async () => {
+    const { result } = renderHook(() => useDatosPeriodicos(obtener, 60000))
+    await esperarPromesas()
+
+    act(() => result.current.recargar({ silencioso: true }))
+    expect(result.current.estado).toBe('listo')
+    await esperarPromesas()
+    expect(obtener).toHaveBeenCalledTimes(2)
+  })
+})

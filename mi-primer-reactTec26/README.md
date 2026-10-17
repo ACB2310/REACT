@@ -1,16 +1,45 @@
-# React + Vite
+# Mapa en vivo de desastres y evacuación
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Plataforma web para la gestión de recursos y evacuación durante desastres naturales en México:
+mapa en vivo con sismos (USGS), ciclones (NHC y GDACS), satélite (NASA GIBS), refugios y
+bloqueos reportados por la ciudadanía.
 
-Currently, two official plugins are available:
+> Plataforma informativa. Las indicaciones oficiales de Protección Civil, SMN y SSN tienen prioridad.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Empezar
 
-## React Compiler
+```bash
+npm install
+npm run dev        # servidor de desarrollo
+npm test           # pruebas
+npm run lint       # revisar el código
+npm run build      # compilar para producción
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Sin Supabase configurado la app funciona igual con sismos, ciclones y satélite; solo avisa que
+refugios y bloqueos no están disponibles.
 
-## Expanding the ESLint configuration
+## Configurar Supabase (refugios y bloqueos)
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+1. Crea un proyecto en [Supabase](https://supabase.com).
+2. Copia `.env.example` como `.env.local` y pon:
+   - `VITE_SUPABASE_URL`: la URL **base** del proyecto (`https://xxxx.supabase.co`, sin `/rest/v1`).
+   - `VITE_SUPABASE_PUBLISHABLE_KEY`: la **Publishable key** (`sb_publishable_…`).
+   - **Nunca** pongas la Secret key (`sb_secret_…`) en este proyecto.
+3. En **Authentication → Sign In / Providers**, activa **Email** y **Anonymous sign-ins**
+   (los reportes sin cuenta usan sesiones anónimas).
+4. En el **SQL Editor**, pega y ejecuta **en orden** los archivos de `supabase/migrations/`.
+5. Verifica la seguridad: pega `supabase/pruebas/verificar_rls.sql` en el SQL Editor.
+   Termina a propósito con `ERROR: RESULTADO: 18 de 18 casos OK` y no deja datos guardados.
+6. Importa la lista oficial de refugios: ver `supabase/plantillas/LEEME.md`.
+7. Asigna roles (brigadista, coordinador): ver `supabase/pruebas/LEEME.md`.
+
+## Pantallas
+
+- **Mapa**: datos en vivo, con la fuente y la hora de cada uno.
+- **Reportar**: cualquier persona marca un bloqueo en el mapa (parcial o total). Dura 24 h.
+- **Entrar**: cuenta con correo y contraseña (para brigadistas y coordinadores).
+- **Refugios** (solo coordinador): ubicar en el mapa los refugios de la lista oficial y
+  actualizar su estado y ocupación.
+
+Más detalles del proyecto y reglas para contribuir: `CLAUDE.md`.

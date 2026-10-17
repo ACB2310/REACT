@@ -1,9 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import Mapa from './Mapa.jsx'
 import { useSismos } from '../hooks/useSismos.js'
 import { useCiclones } from '../hooks/useCiclones.js'
 import { useSatelite } from '../hooks/useSatelite.js'
+import { useRefugios } from '../hooks/useRefugios.js'
+import { useBloqueos } from '../hooks/useBloqueos.js'
+import { useSesion } from '../hooks/useSesion.js'
+import { simularSupabaseListo } from '../test/simularSupabase.js'
+import { renovarBloqueo, eliminarBloqueo } from '../services/bloqueos.js'
 import { sismosEjemplo } from '../mocks/sismosEjemplo.js'
 import { nhcEjemplo, eventosGdacsEjemplo, puntosNhcEjemplo } from '../mocks/ciclonesEjemplo.js'
 import { combinarCiclones } from '../utils/ciclones.js'
@@ -11,6 +17,11 @@ import { combinarCiclones } from '../utils/ciclones.js'
 vi.mock('../hooks/useSismos.js', () => ({ useSismos: vi.fn() }))
 vi.mock('../hooks/useCiclones.js', () => ({ useCiclones: vi.fn() }))
 vi.mock('../hooks/useSatelite.js', () => ({ useSatelite: vi.fn() }))
+// Refugios, bloqueos y sesión salen de Supabase: aquí se simulan
+vi.mock('../hooks/useRefugios.js', () => ({ useRefugios: vi.fn() }))
+vi.mock('../hooks/useBloqueos.js', () => ({ useBloqueos: vi.fn() }))
+vi.mock('../hooks/useSesion.js', () => ({ useSesion: vi.fn() }))
+vi.mock('../services/bloqueos.js', () => ({ renovarBloqueo: vi.fn(), eliminarBloqueo: vi.fn() }))
 // MapLibre necesita WebGL; aquí solo se prueba lo que muestra la página alrededor del mapa
 // El MapaBase falso guarda sus props para poder simular que el mapa base falla
 const { mapaBase, capas } = vi.hoisted(() => ({ mapaBase: { props: null, montajes: 0 }, capas: {} }))
@@ -30,6 +41,8 @@ vi.mock('../components/MapaBase.jsx', async () => {
 vi.mock('../components/CapaSismos.jsx', () => ({ default: (props) => ((capas.sismos = props), null) }))
 vi.mock('../components/CapaCiclones.jsx', () => ({ default: (props) => ((capas.ciclones = props), null) }))
 vi.mock('../components/CapaSatelite.jsx', () => ({ default: (props) => ((capas.satelite = props), null) }))
+vi.mock('../components/CapaRefugios.jsx', () => ({ default: (props) => ((capas.refugios = props), null) }))
+vi.mock('../components/CapaBloqueos.jsx', () => ({ default: (props) => ((capas.bloqueos = props), null) }))
 
 const AVISO =
   'Plataforma informativa. Las indicaciones oficiales de Protección Civil, SMN y SSN tienen prioridad.'
@@ -91,6 +104,7 @@ function simularSatelite(valores = {}) {
 
 describe('Página Mapa', () => {
   beforeEach(() => {
+    simularSupabaseListo({ useRefugios, useBloqueos, useSesion })
     useSismos.mockReset()
     useCiclones.mockReset()
     useSatelite.mockReset()
@@ -102,7 +116,7 @@ describe('Página Mapa', () => {
   })
 
   it('muestra el título Mapa en vivo', () => {
-    render(<Mapa />)
+    render(<Mapa />, { wrapper: MemoryRouter })
     expect(screen.getByRole('heading', { name: 'Mapa en vivo' })).toBeInTheDocument()
   })
 
@@ -115,7 +129,7 @@ describe('Página Mapa', () => {
     ]
     for (const valores of estados) {
       simularSismos(valores)
-      const { unmount } = render(<Mapa />)
+      const { unmount } = render(<Mapa />, { wrapper: MemoryRouter })
       expect(screen.getByText(AVISO)).toBeInTheDocument()
       unmount()
     }
@@ -124,13 +138,13 @@ describe('Página Mapa', () => {
   describe('sismos', () => {
     it('muestra Cargando los sismos… al inicio', () => {
       simularSismos({})
-      render(<Mapa />)
+      render(<Mapa />, { wrapper: MemoryRouter })
       expect(screen.getByText('Cargando los sismos…')).toBeInTheDocument()
     })
 
     it('muestra el error real y Reintentar llama recargar', () => {
       const recargar = simularSismos({ estado: 'error', error: 'USGS respondió 503' })
-      render(<Mapa />)
+      render(<Mapa />, { wrapper: MemoryRouter })
 
       expect(screen.getByText('No se pudieron cargar los sismos: USGS respondió 503')).toBeInTheDocument()
       screen.getByRole('button', { name: 'Reintentar' }).click()
@@ -139,7 +153,7 @@ describe('Página Mapa', () => {
 
     it('con error y datos previos mantiene el mapa y avisa', () => {
       simularSismos({ estado: 'error', error: 'USGS respondió 500', sismos: dosSismos, actualizadoEn: 1700000000000 })
-      render(<Mapa />)
+      render(<Mapa />, { wrapper: MemoryRouter })
 
       expect(screen.getByText(/^No se pudieron actualizar los sismos\. Mostrando datos del /)).toHaveTextContent(HORA)
       expect(screen.getByText('2 sismos en los últimos 7 días')).toBeInTheDocument()
@@ -148,13 +162,13 @@ describe('Página Mapa', () => {
 
     it('al reintentar con datos en pantalla muestra Actualizando los sismos…', () => {
       simularSismos({ estado: 'cargando', sismos: dosSismos, actualizadoEn: 1700000000000 })
-      render(<Mapa />)
+      render(<Mapa />, { wrapper: MemoryRouter })
       expect(screen.getByText('Actualizando los sismos…')).toBeInTheDocument()
     })
 
     it('muestra el mensaje de semana sin sismos', () => {
       simularSismos({ estado: 'listo', sismos: sinSismos, actualizadoEn: 1700000000000 })
-      render(<Mapa />)
+      render(<Mapa />, { wrapper: MemoryRouter })
       expect(
         screen.getByText('No hay sismos de magnitud 2.5 o más en México y alrededores en los últimos 7 días.'),
       ).toBeInTheDocument()
@@ -162,17 +176,17 @@ describe('Página Mapa', () => {
 
     it('muestra el conteo en singular y plural', () => {
       simularSismos({ estado: 'listo', sismos: unSismo, actualizadoEn: 1700000000000 })
-      const { unmount } = render(<Mapa />)
+      const { unmount } = render(<Mapa />, { wrapper: MemoryRouter })
       expect(screen.getByText('1 sismo en los últimos 7 días')).toBeInTheDocument()
       unmount()
 
       simularSismos({ estado: 'listo', sismos: dosSismos, actualizadoEn: 1700000000000 })
-      render(<Mapa />)
+      render(<Mapa />, { wrapper: MemoryRouter })
       expect(screen.getByText('2 sismos en los últimos 7 días')).toBeInTheDocument()
     })
 
     it('muestra la leyenda de magnitudes', () => {
-      render(<Mapa />)
+      render(<Mapa />, { wrapper: MemoryRouter })
       expect(screen.getByText('6.0 o más')).toBeInTheDocument()
       expect(screen.getByText('4.0 a 5.9')).toBeInTheDocument()
       expect(screen.getByText('menos de 4.0')).toBeInTheDocument()
@@ -181,7 +195,7 @@ describe('Página Mapa', () => {
 
   describe('ciclones', () => {
     it('lista Huracán Trudy con categoría, viento y alerta de GDACS', () => {
-      render(<Mapa />)
+      render(<Mapa />, { wrapper: MemoryRouter })
       expect(screen.getByText('Huracán Trudy · categoría 1 · 139 km/h · alerta GDACS naranja')).toBeInTheDocument()
       expect(screen.getByText('Ciclón tropical Simon · alerta GDACS verde')).toBeInTheDocument()
     })
@@ -191,7 +205,7 @@ describe('Página Mapa', () => {
         nhc: { estado: 'error', error: 'Formato inesperado de NOAA', datos: null, actualizadoEn: null },
         gdacs: { datos: VACIA },
       })
-      render(<Mapa />)
+      render(<Mapa />, { wrapper: MemoryRouter })
 
       expect(screen.queryByText(/Sin ciclones activos/)).not.toBeInTheDocument()
       expect(
@@ -201,7 +215,7 @@ describe('Página Mapa', () => {
 
     it('mientras una fuente carga tampoco dice "Sin ciclones activos"', () => {
       simularCiclones({ nhc: { estado: 'cargando', datos: null }, gdacs: { datos: VACIA } })
-      render(<Mapa />)
+      render(<Mapa />, { wrapper: MemoryRouter })
       expect(screen.queryByText(/Sin ciclones activos/)).not.toBeInTheDocument()
     })
 
@@ -210,13 +224,13 @@ describe('Página Mapa', () => {
         nhc: { datos: { puntos: VACIA, trayectorias: VACIA, conos: VACIA, avisos: VACIA } },
         gdacs: { datos: VACIA },
       })
-      render(<Mapa />)
+      render(<Mapa />, { wrapper: MemoryRouter })
       expect(screen.getByText('Sin ciclones activos cerca de México según NHC y GDACS.')).toBeInTheDocument()
     })
 
     it('si GDACS falla igual lista los ciclones de NHC', () => {
       simularCiclones({ gdacs: { estado: 'error', error: 'No se pudo conectar con GDACS', datos: null } })
-      render(<Mapa />)
+      render(<Mapa />, { wrapper: MemoryRouter })
 
       expect(screen.getByText('Huracán Trudy · categoría 1 · 139 km/h')).toBeInTheDocument()
       expect(
@@ -225,7 +239,7 @@ describe('Página Mapa', () => {
     })
 
     it('le pasa a CapaCiclones los datos de NHC y los eventos que solo tiene GDACS', () => {
-      render(<Mapa />)
+      render(<Mapa />, { wrapper: MemoryRouter })
       expect(capas.ciclones.nhc).toBe(nhcEjemplo)
       expect(capas.ciclones.eventosGdacs).toEqual(VACIA)
       expect(puntosNhcEjemplo.features).toHaveLength(2)
@@ -234,14 +248,14 @@ describe('Página Mapa', () => {
 
   describe('capas y satélite', () => {
     it('el satélite empieza apagado y no se le pide la hora', () => {
-      render(<Mapa />)
+      render(<Mapa />, { wrapper: MemoryRouter })
       expect(useSatelite).toHaveBeenLastCalledWith(false)
       expect(capas.satelite.visible).toBe(false)
     })
 
     it('al prender Satélite se pide la hora y se muestra la capa', () => {
       simularSatelite({ estado: 'listo', datos: '2026-10-16T21:30:00Z', actualizadoEn: Date.UTC(2026, 9, 16, 21, 30) })
-      render(<Mapa />)
+      render(<Mapa />, { wrapper: MemoryRouter })
 
       act(() => {
         screen.getByRole('checkbox', { name: 'Satélite' }).click()
@@ -251,7 +265,7 @@ describe('Página Mapa', () => {
     })
 
     it('apagar Sismos y Ciclones oculta sus capas', () => {
-      render(<Mapa />)
+      render(<Mapa />, { wrapper: MemoryRouter })
       act(() => {
         screen.getByRole('checkbox', { name: 'Sismos' }).click()
         screen.getByRole('checkbox', { name: 'Ciclones' }).click()
@@ -262,7 +276,7 @@ describe('Página Mapa', () => {
 
     it('el mensaje de satélite solo aparece con la capa prendida', () => {
       simularSatelite({ estado: 'error', error: 'No se pudo conectar con NASA GIBS' })
-      render(<Mapa />)
+      render(<Mapa />, { wrapper: MemoryRouter })
       expect(screen.queryByText(/imagen de satélite/)).not.toBeInTheDocument()
 
       act(() => {
@@ -278,7 +292,7 @@ describe('Página Mapa', () => {
     it('sin conexión se avisa una sola vez y se ocultan los mensajes por fuente', () => {
       simularSismos({ estado: 'error', error: 'No se pudo conectar con USGS', sinConexion: true, sismos: dosSismos, actualizadoEn: 1700000000000 })
       simularCiclones({ nhc: { sinConexion: true }, gdacs: { sinConexion: true } })
-      render(<Mapa />)
+      render(<Mapa />, { wrapper: MemoryRouter })
 
       expect(screen.getAllByText('Sin conexión. Se muestran los últimos datos descargados.')).toHaveLength(1)
       expect(screen.queryByText(/No se pudieron/)).not.toBeInTheDocument()
@@ -287,7 +301,11 @@ describe('Página Mapa', () => {
     it('sin conexión y sin datos lo dice claramente', () => {
       simularSismos({ sinConexion: true })
       simularCiclones({ nhc: { estado: 'cargando', datos: null }, gdacs: { estado: 'cargando', datos: null } })
-      render(<Mapa />)
+      simularSupabaseListo(
+        { useRefugios, useBloqueos, useSesion },
+        { refugios: { estado: 'cargando', refugios: null }, bloqueos: { estado: 'cargando', bloqueos: null } },
+      )
+      render(<Mapa />, { wrapper: MemoryRouter })
       expect(screen.getByText('Sin conexión. No hay datos guardados.')).toBeInTheDocument()
       expect(screen.queryByText('Cargando los sismos…')).not.toBeInTheDocument()
     })
@@ -295,7 +313,7 @@ describe('Página Mapa', () => {
 
   describe('pie', () => {
     it('muestra la fuente y la hora de cada dato', () => {
-      render(<Mapa />)
+      render(<Mapa />, { wrapper: MemoryRouter })
       expect(screen.getByText(/^Sismos: USGS · /)).toHaveTextContent(HORA)
       // 1792184930000 = 16 oct 2026 15:08 en CDMX; GDACS 21:10 UTC = 15:10 en CDMX
       expect(screen.getByText(/^Ciclones: NHC\/NOAA · /)).toHaveTextContent(
@@ -310,7 +328,7 @@ describe('Página Mapa', () => {
         nhc: { datos: vacioNhc, actualizadoEn: null, consultadoEn: Date.UTC(2026, 9, 16, 21, 30) },
         gdacs: { datos: VACIA, actualizadoEn: null, consultadoEn: Date.UTC(2026, 9, 16, 21, 31) },
       })
-      render(<Mapa />)
+      render(<Mapa />, { wrapper: MemoryRouter })
 
       expect(screen.getByText(/^Ciclones: NHC\/NOAA · /)).toHaveTextContent(
         /NHC\/NOAA · consultado 16 oct\.? 2026, 15:30 · GDACS · consultado 16 oct\.? 2026, 15:31/,
@@ -319,14 +337,14 @@ describe('Página Mapa', () => {
 
     it('sin datos todavía usa — en lugar de "sin fecha"', () => {
       simularSismos({})
-      render(<Mapa />)
+      render(<Mapa />, { wrapper: MemoryRouter })
       expect(screen.getByText('Sismos: USGS · —')).toBeInTheDocument()
       expect(screen.queryByText(/sin fecha/)).not.toBeInTheDocument()
     })
 
     it('con el satélite prendido también muestra su hora', () => {
       simularSatelite({ estado: 'listo', datos: '2026-10-16T21:30:00Z', actualizadoEn: Date.UTC(2026, 9, 16, 21, 30) })
-      render(<Mapa />)
+      render(<Mapa />, { wrapper: MemoryRouter })
       act(() => {
         screen.getByRole('checkbox', { name: 'Satélite' }).click()
       })
@@ -334,7 +352,7 @@ describe('Página Mapa', () => {
     })
 
     it('muestra la leyenda de ciclones', () => {
-      render(<Mapa />)
+      render(<Mapa />, { wrapper: MemoryRouter })
       expect(screen.getByText('Cono de pronóstico')).toBeInTheDocument()
       expect(screen.getByText('Aviso de huracán')).toBeInTheDocument()
       expect(screen.getByText('Alerta GDACS roja')).toBeInTheDocument()
@@ -342,7 +360,7 @@ describe('Página Mapa', () => {
   })
 
   it('si el mapa base no carga, lo dice y Reintentar vuelve a crearlo', () => {
-    render(<Mapa />)
+    render(<Mapa />, { wrapper: MemoryRouter })
     expect(mapaBase.montajes).toBe(1)
 
     act(() => {
@@ -356,5 +374,92 @@ describe('Página Mapa', () => {
     })
     expect(mapaBase.montajes).toBe(2)
     expect(screen.queryByText('No se pudo cargar el mapa base. Revisa tu conexión.')).not.toBeInTheDocument()
+  })
+
+  describe('refugios y bloqueos', () => {
+    const BLOQUEO = {
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [-103.35, 20.67] },
+      properties: { id: 10, tipo: 'total', esMio: true },
+    }
+
+    it('sin Supabase el mapa sigue mostrando sismos y avisa una sola vez', () => {
+      simularSupabaseListo(
+        { useRefugios, useBloqueos, useSesion },
+        {
+          refugios: { estado: 'error', error: 'Supabase no está configurado', refugios: null },
+          bloqueos: { estado: 'error', error: 'Supabase no está configurado', bloqueos: null },
+          sesion: { configurado: false },
+        },
+      )
+      render(<Mapa />, { wrapper: MemoryRouter })
+
+      expect(screen.getByText('2 sismos en los últimos 7 días')).toBeInTheDocument()
+      expect(screen.getAllByText('Refugios y bloqueos no disponibles: falta configurar Supabase.')).toHaveLength(1)
+      expect(screen.queryByText(/No se pudieron cargar los refugios/)).toBeNull()
+      expect(capas.sismos.sismos).toBe(dosSismos)
+    })
+
+    it('pasa refugios, bloqueos y rol a sus capas', () => {
+      const bloqueos = { type: 'FeatureCollection', features: [BLOQUEO] }
+      simularSupabaseListo({ useRefugios, useBloqueos, useSesion }, { bloqueos: { bloqueos }, sesion: { rol: 'brigadista' } })
+      render(<Mapa />, { wrapper: MemoryRouter })
+
+      expect(capas.bloqueos.bloqueos).toBe(bloqueos)
+      expect(capas.bloqueos.rol).toBe('brigadista')
+      expect(capas.bloqueos.visible).toBe(true)
+      expect(capas.refugios.visible).toBe(true)
+      expect(screen.getByText('1 bloqueo reportado en las últimas 24 h')).toBeInTheDocument()
+    })
+
+    it('renovar desde el popup recarga los bloqueos', async () => {
+      const recargar = vi.fn()
+      simularSupabaseListo({ useRefugios, useBloqueos, useSesion }, { bloqueos: { recargar } })
+      renovarBloqueo.mockResolvedValue(Date.now())
+      render(<Mapa />, { wrapper: MemoryRouter })
+
+      await act(() => capas.bloqueos.alRenovar(10))
+
+      expect(renovarBloqueo).toHaveBeenCalledWith(10)
+      expect(recargar).toHaveBeenCalledWith({ silencioso: true })
+    })
+
+    it('un error al eliminar llega al popup', async () => {
+      simularSupabaseListo({ useRefugios, useBloqueos, useSesion })
+      eliminarBloqueo.mockRejectedValue(new Error('No tienes permiso para hacer esto.'))
+      render(<Mapa />, { wrapper: MemoryRouter })
+
+      await expect(capas.bloqueos.alEliminar(10)).rejects.toThrow('No tienes permiso para hacer esto.')
+    })
+
+    it('el error de bloqueos se muestra con Reintentar', () => {
+      simularSupabaseListo(
+        { useRefugios, useBloqueos, useSesion },
+        { bloqueos: { estado: 'error', error: 'No se pudo conectar con Supabase', bloqueos: null } },
+      )
+      render(<Mapa />, { wrapper: MemoryRouter })
+
+      expect(screen.getByText('No se pudieron cargar los bloqueos: No se pudo conectar con Supabase')).toBeInTheDocument()
+    })
+
+    it('el pie dice la fuente de los refugios y de los bloqueos', () => {
+      const refugios = {
+        type: 'FeatureCollection',
+        features: [{ type: 'Feature', geometry: null, properties: { fuente: 'Protección Civil de Jalisco' } }],
+      }
+      simularSupabaseListo(
+        { useRefugios, useBloqueos, useSesion },
+        { refugios: { refugios, actualizadoEn: 1700000000000 }, bloqueos: { actualizadoEn: 1700000000000 } },
+      )
+      render(<Mapa />, { wrapper: MemoryRouter })
+
+      expect(screen.getByText(/^Refugios: Protección Civil de Jalisco · 14 nov/)).toBeInTheDocument()
+      expect(screen.getByText(/^Bloqueos: reportes ciudadanos · 14 nov/)).toBeInTheDocument()
+    })
+
+    it('tiene un botón para reportar un bloqueo', () => {
+      render(<Mapa />, { wrapper: MemoryRouter })
+      expect(screen.getByRole('link', { name: 'Reportar bloqueo' })).toHaveAttribute('href', '/reportar')
+    })
   })
 })

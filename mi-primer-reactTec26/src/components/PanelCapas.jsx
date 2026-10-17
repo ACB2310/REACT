@@ -2,6 +2,8 @@ const OPCIONES = [
   { nombre: 'sismos', etiqueta: 'Sismos' },
   { nombre: 'ciclones', etiqueta: 'Ciclones' },
   { nombre: 'satelite', etiqueta: 'Satélite' },
+  { nombre: 'refugios', etiqueta: 'Refugios' },
+  { nombre: 'bloqueos', etiqueta: 'Bloqueos' },
 ]
 
 // Casillas para prender y apagar cada capa del mapa.
@@ -14,7 +16,7 @@ function PanelCapas({ capas, alCambiar }) {
         <label key={nombre} className="panel-capas-opcion">
           <input
             type="checkbox"
-            checked={capas[nombre]}
+            checked={Boolean(capas[nombre])}
             onChange={(evento) => alCambiar(nombre, evento.target.checked)}
           />
           {etiqueta}

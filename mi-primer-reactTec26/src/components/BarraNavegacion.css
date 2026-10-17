@@ -1,0 +1,30 @@
+/* Barra de pantallas abajo: botones grandes y fáciles de tocar con prisa */
+.barra-navegacion {
+  display: flex;
+  border-top: 1px solid var(--borde);
+  background-color: var(--superficie);
+  /* Deja espacio a la barra del sistema en celulares con gestos */
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.barra-navegacion-enlace {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+  color: var(--texto-suave);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+/* La pantalla actual se marca con color y una línea arriba */
+.barra-navegacion-enlace.active {
+  color: var(--primario);
+  box-shadow: inset 0 3px 0 var(--primario);
+}
+
+.barra-navegacion-enlace:focus-visible {
+  outline: 3px solid var(--texto);
+  outline-offset: -3px;
+}
