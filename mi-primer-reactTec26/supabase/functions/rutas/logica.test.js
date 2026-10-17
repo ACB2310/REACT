@@ -447,3 +447,111 @@ describe('ruta combinada (carro + a pie)', () => {
     expect(resultado).toEqual({ estado: 'sin-ruta', motivo: 'bloqueada' })
   })
 })
+
+describe('ruta combinada: correcciones de la revisión', () => {
+  const REFUGIO = [-103.30, 20.67]
+  const refugios = [refugio(1, ...REFUGIO)]
+  const isocrona = {
+    type: 'Polygon',
+    coordinates: [
+      Array.from({ length: 49 }, (_, k) => {
+        const angulo = ((k % 48) / 48) * 2 * Math.PI
+        return [REFUGIO[0] + 0.008 * Math.cos(angulo), REFUGIO[1] + 0.008 * Math.sin(angulo)]
+      }),
+    ],
+  }
+  const esRefugio = (p) => p[0] === REFUGIO[0] && p[1] === REFUGIO[1]
+  const recta = (origen, destino, segundosPorKm) =>
+    rutaOrs([origen, destino], distanciaKm(origen, destino) * segundosPorKm, distanciaKm(origen, destino) * 1000)
+
+  it('un punto al que la matriz no llega (null) no cuenta como 0 s', async () => {
+    // La matriz en carro no llega a los puntos al este del refugio
+    const pedirMatriz = vi.fn(async (perfil, puntos) => {
+      const [desde, ...hacia] = puntos
+      if (perfil === 'driving-car') return hacia.map((p) => (esRefugio(p) ? 300 : p[0] > REFUGIO[0] ? null : distanciaKm(desde, p) * 90))
+      return hacia.map((p) => distanciaKm(desde, p) * 720)
+    })
+    const pedirRuta = vi.fn(async (perfil, origen, destino) => {
+      if (perfil === 'driving-car' && (esRefugio(destino) || destino[0] > REFUGIO[0])) throw new ErrorRutas('SIN_RUTA')
+      return recta(origen, destino, perfil === 'driving-car' ? 90 : 720)
+    })
+    const resultado = await planificarRuta({
+      origen: ORIGEN, modo: 'carro', refugios, bloqueos: [], zonas: [], pedirMatriz, pedirRuta, pedirIsocrona: async () => isocrona,
+    })
+    expect(resultado.modo).toBe('combinada')
+    expect(resultado.transbordo[0]).toBeLessThan(REFUGIO[0])
+  })
+
+  // El caso para el que existe la ruta combinada: un bloqueo en la calle de acceso al refugio.
+  // La matriz no sabe del bloqueo, así que los "mejores" puntos son los que quedan pasando el bloqueo.
+  it('con un bloqueo en la calle de acceso, el carro llega hasta antes del bloqueo', async () => {
+    const BLOQUEO = [-103.304, 20.67]
+    const pasandoElBloqueo = (p) => p[0] > BLOQUEO[0] - 0.0003
+    const evitaElBloqueo = (avoid) =>
+      (avoid?.coordinates ?? []).some(([anillo]) => puntoEnAnillo(BLOQUEO, anillo))
+    const pedirMatriz = vi.fn(async (perfil, puntos) => {
+      const [desde, ...hacia] = puntos
+      return hacia.map((p) => distanciaKm(desde, p) * (perfil === 'driving-car' ? 90 : 720))
+    })
+    const pedirRuta = vi.fn(async (perfil, origen, destino, avoid) => {
+      // En carro, pasando el bloqueo solo se llega si NO se evita el bloqueo (la calle es una sola)
+      if (perfil === 'driving-car' && pasandoElBloqueo(destino) && evitaElBloqueo(avoid)) throw new ErrorRutas('SIN_RUTA')
+      return recta(origen, destino, perfil === 'driving-car' ? 90 : 720)
+    })
+    const resultado = await planificarRuta({
+      origen: ORIGEN,
+      modo: 'carro',
+      refugios,
+      bloqueos: [bloqueo(3, 'solo_vehiculos', ...BLOQUEO)],
+      zonas: [],
+      pedirMatriz,
+      pedirRuta,
+      pedirIsocrona: async () => isocrona,
+    })
+    expect(resultado.modo).toBe('combinada')
+    // Se baja antes del bloqueo, a más de 25 m, y el tramo en carro no lo toca
+    expect(resultado.transbordo[0]).toBeLessThan(BLOQUEO[0])
+    expect(distanciaKm(resultado.transbordo, BLOQUEO)).toBeGreaterThan(0.025)
+    expect(lineaTocaAnillo(resultado.ruta.features[0].geometry.coordinates, circuloAlrededor(BLOQUEO))).toBe(false)
+  })
+
+  // ORS ajusta el inicio del tramo a pie a la banqueta más cercana: si queda lejos de donde
+  // terminó el carro, ese hueco no se dibujaría ni se revisaría
+  it('si el tramo a pie empieza lejos de donde terminó el carro, se descarta', async () => {
+    const pedirMatriz = vi.fn(async (perfil, puntos) => {
+      const [desde, ...hacia] = puntos
+      return hacia.map((p) => (perfil === 'driving-car' && esRefugio(p) ? 300 : distanciaKm(desde, p) * (perfil === 'driving-car' ? 90 : 720)))
+    })
+    const pedirRuta = vi.fn(async (perfil, origen, destino) => {
+      if (perfil === 'driving-car') {
+        if (esRefugio(destino)) throw new ErrorRutas('SIN_RUTA')
+        return recta(origen, destino, 90)
+      }
+      // A pie, ORS empieza 200 m al norte de donde lo dejó el carro
+      const inicio = [origen[0], origen[1] + 0.0018]
+      return rutaOrs([inicio, destino], 600, 900)
+    })
+    const resultado = await planificarRuta({
+      origen: ORIGEN, modo: 'carro', refugios, bloqueos: [], zonas: [], pedirMatriz, pedirRuta, pedirIsocrona: async () => isocrona,
+    })
+    expect(resultado).toEqual({ estado: 'sin-ruta', motivo: 'bloqueada' })
+  })
+
+  it('el tramo en carro no termina con "Llegaste": sigue la instrucción de bajarse', async () => {
+    const pedirMatriz = vi.fn(async (perfil, puntos) => {
+      const [desde, ...hacia] = puntos
+      return hacia.map((p) => distanciaKm(desde, p) * (perfil === 'driving-car' ? 90 : 720))
+    })
+    const pedirRuta = vi.fn(async (perfil, origen, destino) => {
+      if (perfil === 'driving-car' && esRefugio(destino)) throw new ErrorRutas('SIN_RUTA')
+      return recta(origen, destino, perfil === 'driving-car' ? 90 : 720)
+    })
+    const resultado = await planificarRuta({
+      origen: ORIGEN, modo: 'carro', refugios, bloqueos: [], zonas: [], pedirMatriz, pedirRuta, pedirIsocrona: async () => isocrona,
+    })
+    const pasos = resultado.resumen.pasos.map((p) => p.instruccion)
+    const bajarse = pasos.indexOf(INSTRUCCION_TRANSBORDO)
+    expect(pasos[bajarse - 1]).not.toBe('Llegaste')
+    expect(pasos.at(-1)).toBe('Llegaste')
+  })
+})

@@ -20,9 +20,9 @@ import { ErrorRutas, PERFILES, codigoErrorOrs, planificarRuta } from './logica.j
 const ORS = 'https://api.openrouteservice.org'
 // Tiempo máximo de UNA petición a ORS
 const TIEMPO_LIMITE_MS = 6000
-// Todo (ruta normal y, si hace falta, la combinada) debe terminar antes de los 15 s que
-// espera la app: cada petición usa como máximo lo que queda de este presupuesto
-const PRESUPUESTO_MS = 13000
+// Todo (ruta normal y, si hace falta, la combinada) debe terminar antes de los 25 s que
+// espera la app (src/services/supabase.js): cada petición usa como máximo lo que queda
+const PRESUPUESTO_MS = 20000
 // Misma caja que dentro_de_mexico() en SQL: [oeste, sur, este, norte]
 const CAJA_MEXICO = [-118.6, 14.3, -86.5, 32.8]
 

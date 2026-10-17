@@ -37,3 +37,14 @@ El frontend solo muestra los dos tramos.
 3. Frontend: `PanelRuta` (textos y enlaces), `CapaRutasEvacuacion` (FeatureCollection y punto de
    transbordo), `Mapa` (pasa el transbordo). Pruebas de cada uno.
 4. CLAUDE.md (decisiones y roadmap ✅), lint, build y revisión independiente (lógica de rutas).
+
+## Cambios tras la revisión (2026-10-17)
+
+- Un "null" de la matriz ya no cuenta como 0 s.
+- Nuevo candidato "hasta donde sí llega" (ruta en carro al refugio sin evitar sus alrededores,
+  cortada 30 m antes del primer obstáculo): la matriz no conoce los bloqueos y sola fallaba en el
+  caso típico. De la isócrona se prueban 2 (antes 3).
+- Se revisan los huecos de los tramos y se descarta un tramo a pie que empieza a más de 50 m del carro.
+- El último paso del carro ("Llegaste…") se quita: lo sustituye "Bájate del vehículo".
+- Presupuesto de 20 s en la función y 25 s en la app para las Edge Functions.
+- Cuota real por combinada: 2 isócronas, 4 matrices, hasta 13 rutas (ver CLAUDE.md).

@@ -27,7 +27,14 @@ export const TIEMPO_A_PIE_TRANSBORDO_S = 900
 export const TIEMPO_DESCENSO_S = 120
 export const DESTINOS_COMBINADA = 2
 export const PUNTOS_BORDE_TRANSBORDO = 12
-export const COMBINADAS_A_PROBAR = 3
+// Cuántos puntos de la isócrona se prueban con rutas reales (además del punto de corte)
+export const COMBINADAS_A_PROBAR = 2
+// Alrededor del refugio: obstáculos que la ruta "hasta donde sí llega" no evita (para cortarla ahí)
+export const RADIO_CORTE_KM = 1.5
+// El carro se detiene esta distancia antes del obstáculo
+export const MARGEN_ANTES_DEL_OBSTACULO_KM = 0.03
+// Si ORS empieza el tramo a pie más lejos que esto de donde terminó el carro, no sirve
+export const HUECO_MAXIMO_TRANSBORDO_KM = 0.05
 export const INSTRUCCION_TRANSBORDO = 'Bájate del vehículo aquí y sigue a pie'
 
 const RADIO_TIERRA_KM = 6371.0088
@@ -203,7 +210,8 @@ export function ordenarPorTiempo(candidatos, duraciones) {
 // - Solo los que tocan la caja origen–destino + 2 km, del más cercano al origen al más lejano,
 //   mientras quepan en los límites de ORS. Los que no caben NO se mandan, pero `todos`
 //   los incluye para revisar después que la ruta no los cruce.
-export function obstaculosParaRuta({ bloqueos = [], zonas = [], modo, origen, destino }) {
+// - `sinEvitar(obstaculo)`: los que devuelvan true no se mandan a ORS (pero siguen en `todos`).
+export function obstaculosParaRuta({ bloqueos = [], zonas = [], modo, origen, destino, sinEvitar = () => false }) {
   const tipos = modo === 'carro' ? ['total', 'solo_vehiculos'] : ['total']
   const caja = agrandarCaja(cajaDe([origen, destino]), MARGEN_CAJA_KM)
 
@@ -222,7 +230,7 @@ export function obstaculosParaRuta({ bloqueos = [], zonas = [], modo, origen, de
 
   const todos = [...deBloqueos, ...deZonas]
   const enCamino = todos
-    .filter((o) => cajasSeTocan(cajaDe(o.anillo), caja))
+    .filter((o) => cajasSeTocan(cajaDe(o.anillo), caja) && !sinEvitar(o))
     .map((o) => ({ ...o, distanciaKm: distanciaKm(origen, o.anillo[0]) }))
     .sort((a, b) => a.distanciaKm - b.distanciaKm)
 
@@ -302,7 +310,9 @@ export async function planificarRuta({ origen, modo, refugios, bloqueos, zonas, 
   try {
     const combinada = await planificarRutaCombinada({ origen, refugios, bloqueos, zonas, pedirMatriz, pedirRuta, pedirIsocrona })
     return combinada ?? directa
-  } catch {
+  } catch (error) {
+    // Un error de ORS (límite, caída) deja el "sin ruta" de siempre; uno inesperado se registra
+    if (!(error instanceof ErrorRutas)) console.error('Error inesperado en la ruta combinada', error)
     return directa
   }
 }
@@ -366,6 +376,13 @@ async function planificarRutaDirecta({ origen, modo, refugios, bloqueos, zonas, 
 // el punto desde donde se llega más rápido caminando, y de ahí a pie (CLAUDE.md).
 // `pedirIsocrona(perfil, punto, segundos, avoid)` devuelve el GeoJSON Polygon de lo que
 // se alcanza desde `punto` en ese tiempo.
+//
+// Dos fuentes de candidatos para bajarse del vehículo:
+// - El "punto más cercano al que sí llega": la ruta en carro al refugio SIN evitar los
+//   obstáculos de sus alrededores, cortada unos metros antes del primero que toca.
+//   Siempre se prueba: es el caso típico (un bloqueo en la calle de acceso).
+// - Puntos de la isócrona a pie del refugio, ordenados por las matrices de ORS. La matriz
+//   no conoce los bloqueos, por eso solo sirven para encontrar algo MÁS rápido.
 // ---------------------------------------------------------------------------
 
 // ¿Sirve este punto para bajarse del vehículo? No dentro de una zona de severidad 1 ni a
@@ -392,31 +409,94 @@ export function puntosDeTransbordo(isocrona, destino, { bloqueos = [], zonas = [
   return puntos.filter((punto) => puntoSeguroParaBajar(punto, bloqueos, zonas))
 }
 
-// Candidatos (refugio + punto donde bajarse) con su tiempo estimado por las matrices:
+// Punto de la línea a MARGEN_ANTES_DEL_OBSTACULO_KM antes del primer obstáculo que toca,
+// o null si no toca ninguno (o si ya empieza en uno)
+export function puntoAntesDeObstaculo(linea, obstaculos) {
+  const toca = (tramo) => obstaculos.some((o) => lineaTocaAnillo(tramo, o.anillo))
+  const entre = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]
+  for (let i = 0; i < linea.length - 1; i++) {
+    const [a, b] = [linea[i], linea[i + 1]]
+    if (!toca([a, b])) continue
+    if (toca([a, a])) return null
+    // Hasta dónde se puede avanzar en este tramo sin tocar el obstáculo
+    let libre = 0
+    let ocupado = 1
+    for (let paso = 0; paso < 30; paso++) {
+      const medio = (libre + ocupado) / 2
+      if (toca([a, entre(a, b, medio)])) ocupado = medio
+      else libre = medio
+    }
+    const largoKm = distanciaKm(a, b)
+    const t = libre - (largoKm > 0 ? MARGEN_ANTES_DEL_OBSTACULO_KM / largoKm : 1)
+    if (t > 0) return entre(a, b, t)
+    // El obstáculo está pegado al inicio del tramo: se usa el vértice anterior (si hay)
+    return i > 0 ? a : null
+  }
+  return null
+}
+
+// El "punto más cercano al que sí llega" el carro (ver arriba). null si no hay.
+async function candidatoDeCorte(destino, { origen, bloqueos, zonas, pedirRuta }) {
+  const alrededores = agrandarCaja(cajaDe([destino.posicion]), RADIO_CORTE_KM)
+  const cerca = (o) => cajasSeTocan(cajaDe(o.anillo), alrededores)
+  const obstaculos = obstaculosParaRuta({ bloqueos, zonas, modo: 'carro', origen, destino: destino.posicion, sinEvitar: cerca })
+  let ruta
+  try {
+    ruta = await pedirRuta(PERFILES.carro, origen, destino.posicion, obstaculos.avoid)
+  } catch (error) {
+    if (error?.codigo === 'SIN_RUTA') return null
+    throw error
+  }
+  const punto = puntoAntesDeObstaculo(ruta?.geometry?.coordinates ?? [], obstaculos.todos)
+  if (!punto || !puntoSeguroParaBajar(punto, bloqueos, zonas)) return null
+  return { destino, punto }
+}
+
+// Candidatos de la isócrona con su tiempo estimado por las matrices:
 // tiempo en carro hasta el punto + bajar + tiempo a pie del punto al refugio.
-async function candidatosCombinada(destino, { origen, bloqueos, zonas, pedirMatriz, pedirIsocrona }) {
-  const alrededor = obstaculosParaRuta({ bloqueos, zonas, modo: 'a_pie', origen: destino.posicion, destino: destino.posicion })
-  const isocrona = await pedirIsocrona(PERFILES.a_pie, destino.posicion, TIEMPO_A_PIE_TRANSBORDO_S, alrededor.avoid)
-  const puntos = puntosDeTransbordo(isocrona, destino.posicion, { bloqueos, zonas })
-  if (puntos.length === 0) return []
-  // A pie no hay sentidos únicos: el tiempo del refugio al punto sirve como el del punto al refugio
-  const [enCarro, aPie] = await Promise.all([
-    pedirMatriz(PERFILES.carro, [origen, ...puntos]),
-    pedirMatriz(PERFILES.a_pie, [destino.posicion, ...puntos]),
+async function candidatosDeIsocronas(destinos, { origen, bloqueos, zonas, pedirMatriz, pedirIsocrona }) {
+  const porDestino = await Promise.all(
+    destinos.map(async (destino) => {
+      const alrededor = obstaculosParaRuta({ bloqueos, zonas, modo: 'a_pie', origen: destino.posicion, destino: destino.posicion })
+      const isocrona = await pedirIsocrona(PERFILES.a_pie, destino.posicion, TIEMPO_A_PIE_TRANSBORDO_S, alrededor.avoid)
+      return puntosDeTransbordo(isocrona, destino.posicion, { bloqueos, zonas }).map((punto) => ({ destino, punto }))
+    }),
+  )
+  const todos = porDestino.flat()
+  if (todos.length === 0) return []
+
+  // Una sola matriz en carro para todos los puntos; a pie, una por refugio
+  // (a pie no hay sentidos únicos: del refugio al punto tarda lo mismo que del punto al refugio)
+  const [enCarro, ...aPie] = await Promise.all([
+    pedirMatriz(PERFILES.carro, [origen, ...todos.map((c) => c.punto)]),
+    ...destinos.map((destino, d) => pedirMatriz(PERFILES.a_pie, [destino.posicion, ...porDestino[d].map((c) => c.punto)])),
   ])
-  return puntos
-    .map((punto, i) => ({ destino, punto, estimadoS: enCarro?.[i] + TIEMPO_DESCENSO_S + aPie?.[i] }))
-    .filter((c) => Number.isFinite(c.estimadoS))
+  let i = 0
+  return porDestino.flatMap((candidatos, d) =>
+    candidatos
+      .map((candidato, j) => {
+        const carro = enCarro?.[i++]
+        const pie = aPie[d]?.[j]
+        // Si la matriz no llega (null), ese punto no sirve: no cuenta como 0 s
+        const estimadoS = Number.isFinite(carro) && Number.isFinite(pie) ? carro + TIEMPO_DESCENSO_S + pie : null
+        return { ...candidato, estimadoS }
+      })
+      .filter((c) => c.estimadoS !== null),
+  )
 }
 
 // Ruta real de un candidato: el tramo en carro y, desde donde terminó, el tramo a pie.
-// Se descarta (CRUZA_OBSTACULO) si algún tramo cruza un obstáculo o si el carro termina en
-// un lugar donde no se puede bajar.
+// Se descarta (CRUZA_OBSTACULO) si algún tramo cruza un obstáculo, si el carro termina en
+// un lugar donde no se puede bajar o si ORS empieza el tramo a pie lejos de ahí.
+// Los huecos entre puntos (persona → inicio de la ruta en carro, fin a pie → refugio) se
+// revisan junto con cada tramo.
 async function rutaCombinadaReal({ destino, punto }, { origen, bloqueos, zonas, pedirRuta }) {
   const obstaculosCarro = obstaculosParaRuta({ bloqueos, zonas, modo: 'carro', origen, destino: punto })
   const rutaCarro = await pedirRuta(PERFILES.carro, origen, punto, obstaculosCarro.avoid)
   const lineaCarro = rutaCarro?.geometry?.coordinates ?? []
-  if (lineaCarro.length < 2 || rutaCruzaObstaculos(lineaCarro, obstaculosCarro.todos)) throw new ErrorRutas('CRUZA_OBSTACULO')
+  if (lineaCarro.length < 2 || rutaCruzaObstaculos([origen, ...lineaCarro], obstaculosCarro.todos)) {
+    throw new ErrorRutas('CRUZA_OBSTACULO')
+  }
 
   const transbordo = lineaCarro.at(-1)
   if (!puntoSeguroParaBajar(transbordo, bloqueos, zonas)) throw new ErrorRutas('CRUZA_OBSTACULO')
@@ -424,9 +504,16 @@ async function rutaCombinadaReal({ destino, punto }, { origen, bloqueos, zonas, 
   const obstaculosPie = obstaculosParaRuta({ bloqueos, zonas, modo: 'a_pie', origen: transbordo, destino: destino.posicion })
   const rutaPie = await pedirRuta(PERFILES.a_pie, transbordo, destino.posicion, obstaculosPie.avoid)
   const lineaPie = rutaPie?.geometry?.coordinates ?? []
-  if (lineaPie.length < 2 || rutaCruzaObstaculos(lineaPie, obstaculosPie.todos)) throw new ErrorRutas('CRUZA_OBSTACULO')
+  if (lineaPie.length < 2 || distanciaKm(transbordo, lineaPie[0]) > HUECO_MAXIMO_TRANSBORDO_KM) {
+    throw new ErrorRutas('CRUZA_OBSTACULO')
+  }
+  if (rutaCruzaObstaculos([transbordo, ...lineaPie, destino.posicion], obstaculosPie.todos)) {
+    throw new ErrorRutas('CRUZA_OBSTACULO')
+  }
 
   const carro = resumirRuta(rutaCarro)
+  // El último paso del carro es "Llegaste…": en la combinada lo sustituye "Bájate del vehículo"
+  carro.pasos = carro.pasos.slice(0, -1)
   const aPie = resumirRuta(rutaPie)
   return { destino, transbordo, rutaCarro, rutaPie, carro, aPie, obstaculosCarro, obstaculosPie, totalS: carro.duracionS + TIEMPO_DESCENSO_S + aPie.duracionS }
 }
@@ -436,16 +523,17 @@ export async function planificarRutaCombinada({ origen, refugios, bloqueos = [],
   const destinos = refugiosCandidatos(origen, refugios, zonas, DESTINOS_COMBINADA)
   if (destinos.length === 0) return null
 
-  const porDestino = await Promise.all(
-    destinos.map((destino) => candidatosCombinada(destino, { origen, bloqueos, zonas, pedirMatriz, pedirIsocrona })),
-  )
-  const mejores = porDestino
-    .flat()
-    .sort((a, b) => a.estimadoS - b.estimadoS)
-    .slice(0, COMBINADAS_A_PROBAR)
-  if (mejores.length === 0) return null
+  const [cortes, deIsocronas] = await Promise.all([
+    Promise.all(destinos.map((destino) => candidatoDeCorte(destino, { origen, bloqueos, zonas, pedirRuta }))),
+    candidatosDeIsocronas(destinos, { origen, bloqueos, zonas, pedirMatriz, pedirIsocrona }),
+  ])
+  const aProbar = [
+    ...cortes.filter(Boolean),
+    ...deIsocronas.sort((a, b) => a.estimadoS - b.estimadoS).slice(0, COMBINADAS_A_PROBAR),
+  ]
+  if (aProbar.length === 0) return null
 
-  const intentos = await Promise.allSettled(mejores.map((c) => rutaCombinadaReal(c, { origen, bloqueos, zonas, pedirRuta })))
+  const intentos = await Promise.allSettled(aProbar.map((c) => rutaCombinadaReal(c, { origen, bloqueos, zonas, pedirRuta })))
   const buenas = intentos.filter((i) => i.status === 'fulfilled').map((i) => i.value)
   if (buenas.length === 0) {
     const grave = intentos.find((i) => !['SIN_RUTA', 'CRUZA_OBSTACULO'].includes(i.reason?.codigo))
