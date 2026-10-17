@@ -68,6 +68,33 @@ describe('factorRiesgoSismico', () => {
     expect(factorRiesgoSismico(TRAMO_MONTERREY, coleccion(sismo(null, [-100.307, 25.67])))).toBe(0)
   })
 
+  // USGS publica micro-sismos con magnitud negativa (por ejemplo -0.5)
+  it('una magnitud negativa nunca baja el riesgo', () => {
+    const conM4 = factorRiesgoSismico(TRAMO_MONTERREY, coleccion(sismo(4.0, [-100.307, 25.67])))
+    const conM4yNegativo = factorRiesgoSismico(
+      TRAMO_MONTERREY,
+      coleccion(sismo(4.0, [-100.307, 25.67]), sismo(-0.5, [-100.307, 25.67])),
+    )
+    expect(conM4yNegativo).toBe(conM4)
+    expect(factorRiesgoSismico(TRAMO_MONTERREY, coleccion(sismo(-0.5, [-100.307, 25.67])))).toBe(0)
+  })
+
+  it('una magnitud en texto cuenta igual que el número', () => {
+    expect(factorRiesgoSismico(TRAMO_DIRECTO, coleccion(sismo('6.3', [-99.9, 17.0])))).toBe(Infinity)
+  })
+
+  it('una magnitud infinita se trata como bloqueo', () => {
+    expect(factorRiesgoSismico(TRAMO_DIRECTO, coleccion(sismo(Infinity, [-99.9, 17.0])))).toBe(Infinity)
+  })
+
+  it('un sismo con coordenadas inválidas no rompe el cálculo de los demás', () => {
+    const roto = { type: 'Feature', geometry: { type: 'Point', coordinates: [NaN, 'x'] }, properties: { mag: 7 } }
+    const vacio = { type: 'Feature', geometry: { type: 'Point', coordinates: [] }, properties: { mag: 7 } }
+    const sismos = coleccion(roto, vacio, sismo(6.3, [-99.9, 17.0]))
+    expect(() => factorRiesgoSismico(TRAMO_DIRECTO, sismos)).not.toThrow()
+    expect(factorRiesgoSismico(TRAMO_DIRECTO, sismos)).toBe(Infinity)
+  })
+
   it('sin sismos (null o colección vacía) el factor es 0', () => {
     expect(factorRiesgoSismico(TRAMO_DIRECTO, null)).toBe(0)
     expect(factorRiesgoSismico(TRAMO_DIRECTO, coleccion())).toBe(0)
@@ -97,6 +124,21 @@ describe('filtrarSismosActivos', () => {
 
     expect(filtrarSismosActivos(sismos, ahora, 6).features).toHaveLength(0)
     expect(sismos.features).toHaveLength(1)
+  })
+
+  // Ante la duda se conserva: es más seguro considerar un sismo de más que ignorar uno fuerte
+  it('conserva los sismos sin hora conocida', () => {
+    const ahora = Date.UTC(2026, 9, 16, 12)
+    const sinHora = { type: 'Feature', geometry: { type: 'Point', coordinates: [-99.9, 17] }, properties: { mag: 6.3 } }
+    const horaTexto = sismo(6.3, [-99.9, 17], '2026-10-16T10:00:00Z')
+    expect(filtrarSismosActivos(coleccion(sinHora, horaTexto), ahora).features).toHaveLength(2)
+  })
+
+  it('si la hora actual no es válida conserva todos los sismos', () => {
+    const sismos = coleccion(sismo(6.3, [-99.9, 17], 0), sismo(5.0, [-99.9, 17], 1))
+    expect(filtrarSismosActivos(sismos, NaN).features).toHaveLength(2)
+    expect(filtrarSismosActivos(sismos, undefined).features).toHaveLength(2)
+    expect(filtrarSismosActivos(sismos, Date.UTC(2026, 9, 16), NaN).features).toHaveLength(2)
   })
 
   it('sin colección devuelve una vacía', () => {

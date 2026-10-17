@@ -27,31 +27,44 @@ export function radioCriticoKm(mag) {
 export function factorRiesgoSismico([a, b], sismos) {
   let factor = 0
   for (const sismo of sismos?.features ?? []) {
-    const mag = sismo.properties?.mag
-    // Sin magnitud no se puede estimar el riesgo: ese sismo no aporta
-    if (typeof mag !== 'number' || Number.isNaN(mag)) continue
-    const epicentro = sismo.geometry?.coordinates
-    if (!epicentro) continue
+    // Se acepta la magnitud como número o como texto ("6.3"): un sismo fuerte
+    // no debe contar como "sin sismo" solo por cómo vino escrito
+    const valorMag = sismo.properties?.mag
+    const mag = typeof valorMag === 'string' && valorMag.trim() !== '' ? Number(valorMag) : valorMag
+    // Sin magnitud no se puede estimar el riesgo: ese sismo no aporta.
+    // Las magnitudes de 0 o menos (micro-sismos) tampoco: nunca deben BAJAR el riesgo.
+    if (typeof mag !== 'number' || Number.isNaN(mag) || mag <= 0) continue
 
-    const distanciaKm = distanciaPuntoSegmentoKm(epicentro.slice(0, 2), a, b)
+    // USGS manda [longitud, latitud, profundidad]; solo se usan las dos primeras
+    const [longitud, latitud] = (sismo.geometry?.coordinates ?? []).map(Number)
+    // Si no se sabe dónde fue, no se puede medir: se ignora ese sismo sin romper los demás
+    if (!Number.isFinite(longitud) || !Number.isFinite(latitud)) continue
+
+    const distanciaKm = distanciaPuntoSegmentoKm([longitud, latitud], a, b)
     if (mag >= MAGNITUD_FUERTE && distanciaKm <= radioCriticoKm(mag)) return Infinity
 
     const radio = radioInfluenciaKm(mag)
     if (distanciaKm < radio) {
-      factor += (mag / 2) * (1 - distanciaKm / radio)
+      factor += Math.max(0, (mag / 2) * (1 - distanciaKm / radio))
     }
   }
   return factor
 }
 
 // Deja solo los sismos de las últimas `horas` horas (usa properties.time en ms).
-// No se descartan sismos "del futuro": si el reloj del teléfono va atrasado,
-// un sismo de hace un minuto parecería posterior y no debe ignorarse.
+// Ante la duda se CONSERVA el sismo, porque es más seguro considerar uno de más:
+// - los sismos "del futuro" se quedan (el reloj del teléfono puede ir atrasado);
+// - los sismos sin hora válida se quedan;
+// - si la hora actual o las horas no son válidas, se quedan todos.
 export function filtrarSismosActivos(coleccion, ahoraMs, horas = SISMOS_ACTIVOS_HORAS) {
+  const features = coleccion?.features ?? []
   const limite = ahoraMs - horas * 3600000
-  const features = (coleccion?.features ?? []).filter((sismo) => {
+  if (!Number.isFinite(limite)) return { type: 'FeatureCollection', features: [...features] }
+
+  const activos = features.filter((sismo) => {
     const tiempo = sismo.properties?.time
-    return typeof tiempo === 'number' && tiempo >= limite
+    if (typeof tiempo !== 'number' || !Number.isFinite(tiempo)) return true
+    return tiempo >= limite
   })
-  return { type: 'FeatureCollection', features }
+  return { type: 'FeatureCollection', features: activos }
 }
