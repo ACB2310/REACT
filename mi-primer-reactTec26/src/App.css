@@ -1,0 +1,24 @@
+/* La app ocupa toda la pantalla: la pantalla actual arriba y la barra de navegación abajo */
+.app {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  height: 100dvh;
+}
+
+.app-contenido {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Mensaje sencillo a pantalla completa (cargando, sin permiso) */
+.pantalla-mensaje {
+  display: grid;
+  gap: 12px;
+  padding: 24px 16px;
+  font-size: 1.125rem;
+}
+
+.pantalla-mensaje a {
+  color: var(--primario);
+  font-weight: 700;
+}
