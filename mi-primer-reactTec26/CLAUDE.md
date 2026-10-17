@@ -98,7 +98,8 @@ Toda geometría se maneja en **GeoJSON con coordenadas `[longitud, latitud]`** (
 - **incidentes**: `id`, `ubicacion geography(Point)`, `tipo` (`rescate` | `atencion_medica` | `incendio` | `derrumbe` | `inundacion` | `bloqueo` | `otro`), `prioridad` (**1 = la más urgente**, 5 = la menos), `descripcion` (máx. 500), `estado` (`pendiente` | `asignado` | `en_atencion` | `atendido` | `cancelado`), `bloqueo_id`, `creado_por`, `creado_en`, `actualizado_en`.
 - **brigadas**: `id`, `nombre` (único), `vehiculo`, `base geography(Point)` (**base fija**, no se rastrea a nadie), `estado` (`disponible` | `asignada` | `en_camino` | `en_sitio` | `fuera_de_servicio`), `incidente_id` (único), `actualizado_en`.
 - **asignaciones** (historial): `incidente_id`, `brigada_id`, `asignado_por`, `asignado_en`, `terminado_en`, `resultado` (`atendido` | `liberada` | `cancelado`).
-- **zonas_peligro**: `id`, `geometria geography(Polygon)`, `origen` (`nhc` | `gdacs` | `sismo` | `inundacion` | `manual`), `severidad`, `expira_en`.
+- **zonas_peligro**: `id`, `geometria geography(Polygon)` (≤ 20 km² cada una), `origen` (`manual`; `nhc` | `gdacs` | `sismo` | `inundacion` reservados), `severidad` (1 = las rutas la evitan; 2 = precaución, solo se avisa), `descripcion`, `activa`, `expira_en`, `creado_por`, `creado_en`. Todos la ven (`zonas_peligro_vista`, con `geojson`); solo el coordinador crea/desactiva (`crear_zona_peligro`, `desactivar_zona_peligro`).
+- **consultas_ruta**: registro privado para limitar a 20 rutas en línea por hora por sesión (`registrar_consulta_ruta()`, error `LIMITE_RUTAS`).
 
 Crea **índices GIST** en todas las columnas geográficas. Los cambios de esquema van como migraciones en `supabase/migrations/` (se aplican pegándolas en el SQL Editor, en orden). Después de cambiar políticas, corre `supabase/pruebas/verificar_rls.sql`.
 
@@ -110,6 +111,14 @@ Seguridad de los bloqueos (migración 4, 2026-10-17) — **no deshacer sin revis
 - `reportado_por` **no se puede leer** en la tabla (permisos por columna) ni llega por tiempo real. "Es mío" sale de `ids_bloqueos_mios()`. **No** hagas `grant select on all tables` ni vuelvas a publicar `bloqueos` en Realtime desde el panel.
 - Los avisos de cambios van por el canal **privado** `bloqueos-cambios` (`realtime.send`); nadie puede enviar desde la app. La app recarga como máximo una vez cada 5 s.
 - En el proyecto real: activar **CAPTCHA** para sesiones anónimas y bajar su límite de creación por IP.
+
+Decisiones de la etapa 4 (2026-10-17), migración 6 + Edge Function `rutas`:
+- **Un solo botón "Ruta a refugio"** con selector **A pie / En carro** (`PanelRuta`, `useRutaRefugio`, `useModoRuta`). Con conexión usa la Edge Function `rutas` (OpenRouteService); sin conexión o si ORS falla (`SIN_CONEXION`, `ORS_LIMITE`, `ORS_LLAVE`…) **a pie** cae al Dijkstra del teléfono; **en carro** avisa que hace falta internet.
+- La función (`supabase/functions/rutas/`, lógica pura y probada en `logica.js`): toma los 10 refugios abiertos más cercanos (≤ 30 km, fuera de zonas de severidad 1), los ordena con la **matriz** de ORS (la matriz no acepta zonas a evitar) y pide la **ruta real** con `avoid_polygons` a los 3 más rápidos; gana la de menor tiempo. A pie evita bloqueos `total`; en carro también `solo_vehiculos`. Cada bloqueo es un círculo de 25 m. Respeta los límites de ORS (200 km² y 20 km de extensión): lo que no cabe no se manda, pero **toda** ruta se revisa contra **todos** los obstáculos y se descarta si cruza uno.
+- Si la persona está dentro de una zona, esa zona no se evita (para poder salir) y se avisa.
+- `ORS_API_KEY` es un secreto de Supabase; nunca en `src/` ni en `VITE_*`. La función se despliega desde el panel (ver `supabase/functions/rutas/LEEME.md`) y hay que volver a desplegarla cuando cambie.
+- Zonas de peligro: las dibuja el coordinador en `/zonas` (enlace desde el panel de Brigadas; la barra ya tiene 5 botones). Todos las ven en el mapa (capa "Zonas").
+- Pendiente: que el Dijkstra sin conexión también evite las zonas de peligro (hoy solo bloqueos y sismos).
 
 Decisiones de la etapa 6 (2026-10-17), migración 5:
 - **Solo el coordinador crea incidentes** (tocando el mapa o con "Crear incidente" desde el popup de un bloqueo).
@@ -160,7 +169,7 @@ Decisiones de la etapa 3 (2026-10-16):
 1. Mapa con sismos de USGS. ✅
 2. Capa de huracanes (GDACS + NHC) y capa de satélite (NASA GIBS). ✅
 3. Supabase: tablas de refugios y bloqueos, y pantalla para reportar bloqueos tocando el mapa. ✅ ← siguiente: 4
-4. Ruta al refugio más cercano con OpenRouteService evitando bloqueos y zonas de peligro.
+4. Ruta al refugio más cercano con OpenRouteService evitando bloqueos y zonas de peligro. ✅
 5. Ruta combinada carro + a pie.
 6. Panel de brigadas: asignación de equipos a incidentes por prioridad. ✅
 7. PWA offline, notificaciones push y app con Capacitor.

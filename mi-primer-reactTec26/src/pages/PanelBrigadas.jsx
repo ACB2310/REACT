@@ -93,9 +93,14 @@ function PanelBrigadas() {
     <main className="pantalla-formulario">
       <div className="encabezado-pantalla">
         <h1>Brigadas</h1>
-        <Link to="/brigadas/equipos" className="enlace-secundario">
-          Brigadas y miembros
-        </Link>
+        <div className="fila-botones">
+          <Link to="/brigadas/equipos" className="enlace-secundario">
+            Brigadas y miembros
+          </Link>
+          <Link to="/zonas" className="enlace-secundario">
+            Zonas de peligro
+          </Link>
+        </div>
       </div>
       <p className="texto-ayuda">
         {porAtender.length} por atender · {enCurso.length} en curso · {disponibles}{' '}

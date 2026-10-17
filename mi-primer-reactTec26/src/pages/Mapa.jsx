@@ -13,7 +13,9 @@ import CapaBloqueos from '../components/CapaBloqueos.jsx'
 import LeyendaRefugiosBloqueos from '../components/LeyendaRefugiosBloqueos.jsx'
 import CapaIncidentes from '../components/CapaIncidentes.jsx'
 import LeyendaBrigadas from '../components/LeyendaBrigadas.jsx'
-import PanelEvacuacion from '../components/PanelEvacuacion.jsx'
+import PanelRuta from '../components/PanelRuta.jsx'
+import CapaZonasPeligro from '../components/CapaZonasPeligro.jsx'
+import LeyendaZonas from '../components/LeyendaZonas.jsx'
 import CapaRutasEvacuacion from '../components/CapaRutasEvacuacion.jsx'
 import { useSismos } from '../hooks/useSismos.js'
 import { useCiclones } from '../hooks/useCiclones.js'
@@ -23,6 +25,9 @@ import { useBloqueos } from '../hooks/useBloqueos.js'
 import { useSesion } from '../hooks/useSesion.js'
 import { useIncidentes } from '../hooks/useBrigadas.js'
 import { useRutaEvacuacion } from '../hooks/useRutaEvacuacion.js'
+import { useRutaRefugio } from '../hooks/useRutaRefugio.js'
+import { useModoRuta } from '../hooks/useModoRuta.js'
+import { useZonasPeligro } from '../hooks/useZonasPeligro.js'
 import { renovarBloqueo, eliminarBloqueo, confirmarBloqueo } from '../services/bloqueos.js'
 import { formatearFechaHora } from '../utils/fechas.js'
 import { AVISO_OFICIAL } from '../utils/avisos.js'
@@ -72,7 +77,8 @@ function Mapa() {
   const { nhc, gdacs, ciclones, eventosGdacsSinNhc } = useCiclones()
   const refugios = useRefugios()
   const bloqueos = useBloqueos()
-  const { rol, configurado: supabaseConfigurado } = useSesion()
+  const { rol, configurado: supabaseConfigurado, asegurarSesion } = useSesion()
+  const zonas = useZonasPeligro()
   const navegar = useNavigate()
   // Brigadistas y coordinadores ven además los incidentes (los ciudadanos no)
   const esPersonal = rol === 'brigadista' || rol === 'coordinador'
@@ -94,6 +100,20 @@ function Mapa() {
     return { ...resultadoRuta.ruta, properties: { ...resultadoRuta.ruta.properties, nivelRiesgo: 'desconocido' } }
   }, [resultadoRuta, sinDatosSismos])
 
+  // Etapa 4: un solo botón "Ruta a refugio". Con conexión, ruta en línea (OpenRouteService);
+  // sin conexión o si falla, a pie se usa la ruta del teléfono (evacuacion, arriba)
+  const [modoRuta, setModoRuta] = useModoRuta()
+  const rutaRefugio = useRutaRefugio({ modo: modoRuta, evacuacion, asegurarSesion })
+  const rutaEnLinea = rutaRefugio.estado === 'listo' ? rutaRefugio.resultado : null
+  // En el mapa se dibuja UNA ruta: la en línea, o la del teléfono si se usó el respaldo
+  const rutaDibujada = rutaEnLinea
+    ? { ruta: rutaEnLinea.ruta, origen: rutaRefugio.origen, destino: rutaEnLinea.destino.posicion }
+    : {
+        ruta: rutaParaMapa,
+        origen: resultadoRuta ? evacuacion.origen : null,
+        destino: resultadoRuta?.puntoReunion.coordenadas ?? null,
+      }
+
   // Qué capas están prendidas. El satélite empieza apagado para cuidar datos y batería.
   const [capas, setCapas] = useState({
     sismos: true,
@@ -102,6 +122,7 @@ function Mapa() {
     refugios: true,
     bloqueos: true,
     incidentes: true,
+    zonas: true,
   })
   const satelite = useSatelite(capas.satelite)
 
@@ -157,7 +178,13 @@ function Mapa() {
     <div className="pantalla-mapa">
       <header className="barra-superior">
         <h1>Mapa en vivo</h1>
-        <PanelEvacuacion {...evacuacion} sinDatosBloqueos={bloqueos.bloqueos == null} />
+        <PanelRuta
+          ruta={rutaRefugio}
+          evacuacion={evacuacion}
+          modo={modoRuta}
+          alCambiarModo={setModoRuta}
+          sinDatosBloqueos={bloqueos.bloqueos == null}
+        />
         {totalSismos > 0 && (
           <p className="conteo">
             {totalSismos === 1 ? '1 sismo' : `${totalSismos} sismos`} en los últimos 7 días
@@ -273,6 +300,8 @@ function Mapa() {
         <CapaSatelite mapa={mapa} hora={satelite.datos} visible={capas.satelite} />
         <CapaCiclones mapa={mapa} nhc={nhc.datos} eventosGdacs={eventosGdacsSinNhc} visible={capas.ciclones} />
         <CapaSismos mapa={mapa} sismos={sismos.sismos} visible={capas.sismos} />
+        {/* Las zonas de peligro van debajo de refugios y bloqueos */}
+        <CapaZonasPeligro mapa={mapa} zonas={zonas.zonas} visible={capas.zonas} />
         {/* Refugios y bloqueos van encima: son lo más importante para moverse */}
         <CapaRefugios mapa={mapa} refugios={refugios.refugios} visible={capas.refugios} />
         <CapaBloqueos
@@ -289,9 +318,9 @@ function Mapa() {
         {/* La ruta va al final para quedar encima de todo (también al cambiar de tema) */}
         <CapaRutasEvacuacion
           mapa={mapa}
-          ruta={rutaParaMapa}
-          origen={resultadoRuta ? evacuacion.origen : null}
-          destino={resultadoRuta?.puntoReunion.coordenadas ?? null}
+          ruta={rutaDibujada.ruta}
+          origen={rutaDibujada.origen}
+          destino={rutaDibujada.destino}
         />
         <PanelCapas capas={capas} alCambiar={cambiarCapa} extras={esPersonal ? ['incidentes'] : []} />
         <Link to="/reportar" className="boton-reportar">
@@ -305,6 +334,7 @@ function Mapa() {
           <LeyendaMagnitud />
           <LeyendaCiclones />
           <LeyendaRefugiosBloqueos />
+          <LeyendaZonas />
           {esPersonal && <LeyendaBrigadas />}
         </details>
         <p className="fuente">Sismos: USGS · {horaDeFuente(sismos)}</p>

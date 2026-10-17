@@ -6,6 +6,7 @@ import AdministrarRefugios from './pages/AdministrarRefugios.jsx'
 import PanelBrigadas from './pages/PanelBrigadas.jsx'
 import GestionBrigadas from './pages/GestionBrigadas.jsx'
 import MiBrigada from './pages/MiBrigada.jsx'
+import ZonasPeligro from './pages/ZonasPeligro.jsx'
 import BarraNavegacion from './components/BarraNavegacion.jsx'
 import { useSesion } from './hooks/useSesion.js'
 import './App.css'
@@ -61,6 +62,14 @@ function App() {
             element={
               <SoloCoordinador>
                 <GestionBrigadas />
+              </SoloCoordinador>
+            }
+          />
+          <Route
+            path="/zonas"
+            element={
+              <SoloCoordinador>
+                <ZonasPeligro />
               </SoloCoordinador>
             }
           />

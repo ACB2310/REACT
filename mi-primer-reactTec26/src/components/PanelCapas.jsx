@@ -4,6 +4,7 @@ const OPCIONES = [
   { nombre: 'satelite', etiqueta: 'Satélite' },
   { nombre: 'refugios', etiqueta: 'Refugios' },
   { nombre: 'bloqueos', etiqueta: 'Bloqueos' },
+  { nombre: 'zonas', etiqueta: 'Zonas' },
   // Solo para brigadistas y coordinadores (ver `extras`)
   { nombre: 'incidentes', etiqueta: 'Incidentes', extra: true },
 ]

@@ -33,10 +33,18 @@ refugios y bloqueos no están disponibles.
    Termina a propósito con `ERROR: RESULTADO: 18 de 18 casos OK` y no deja datos guardados.
 6. Importa la lista oficial de refugios: ver `supabase/plantillas/LEEME.md`.
 7. Asigna roles (brigadista, coordinador): ver `supabase/pruebas/LEEME.md`.
-8. Etapa 6 (brigadas): la migración `20261017000005_brigadas.sql` se aplica igual que las demás.
+8. Etapa 4 (rutas): aplica `20261017000006_zonas_y_rutas.sql`, corre `supabase/pruebas/verificar_zonas.sql`
+   (debe decir `RESULTADO: 20 de 20 casos OK`), guarda la llave de openrouteservice.org como secreto
+   `ORS_API_KEY` y despliega la Edge Function `rutas` (ver `supabase/functions/rutas/LEEME.md`).
+9. Etapa 6 (brigadas): la migración `20261017000005_brigadas.sql` se aplica igual que las demás.
    Después corre `supabase/pruebas/verificar_brigadas.sql`; debe terminar con `RESULTADO: 34 de 34 casos OK`.
 
 ## Pantallas
+
+- **Ruta a refugio** (en el mapa): eliges A pie o En carro y la app te lleva al refugio abierto
+  al que llegas más rápido, evitando bloqueos y zonas de peligro. Sin conexión, a pie se calcula
+  en el teléfono.
+- **Zonas de peligro** (solo coordinador, desde Brigadas): dibujar zonas tocando el mapa.
 
 - **Mapa**: datos en vivo, con la fuente y la hora de cada uno.
 - **Reportar**: cualquier persona marca un bloqueo en el mapa (parcial o total). Dura 24 h.
