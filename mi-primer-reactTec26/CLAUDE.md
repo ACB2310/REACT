@@ -118,7 +118,7 @@ Decisiones de la etapa 4 (2026-10-17), migración 6 + Edge Function `rutas`:
 - Si la persona está dentro de una zona, esa zona no se evita (para poder salir) y se avisa.
 - `ORS_API_KEY` es un secreto de Supabase; nunca en `src/` ni en `VITE_*`. La función se despliega desde el panel (ver `supabase/functions/rutas/LEEME.md`) y hay que volver a desplegarla cuando cambie.
 - Zonas de peligro: las dibuja el coordinador en `/zonas` (enlace desde el panel de Brigadas; la barra ya tiene 5 botones). Todos las ven en el mapa (capa "Zonas").
-- Pendiente: que el Dijkstra sin conexión también evite las zonas de peligro (hoy solo bloqueos y sismos).
+- El Dijkstra sin conexión también evita las zonas de severidad 1 (2026-10-17), con la misma regla: la zona donde está la persona (de verdad dentro, sin margen) no se evita y se avisa; ningún destino puede quedar dentro de una zona. Sin datos de zonas, el panel lo avisa.
 
 Decisiones de la etapa 6 (2026-10-17), migración 5:
 - **Solo el coordinador crea incidentes** (tocando el mapa o con "Crear incidente" desde el popup de un bloqueo).

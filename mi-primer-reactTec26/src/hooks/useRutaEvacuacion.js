@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import booleanIntersects from '@turf/boolean-intersects'
+import { lineString, point } from '@turf/helpers'
 import { obtenerUbicacionActual } from '../services/ubicacion.js'
 import { obtenerCallesYPuntosReunion } from '../services/overpass.js'
 import { construirZonaEvacuacion, nodoMasCercano, nodoMasCercanoConectado } from '../utils/grafoOsm.js'
@@ -20,6 +22,23 @@ const RADIO_AVISO_BLOQUEOS_M = 2500
 
 // Se usa como valor por defecto para no crear un arreglo nuevo en cada render
 const SIN_BLOQUEOS = []
+const SIN_ZONAS = []
+const SIN_SISMOS = []
+
+// Zonas de peligro que la ruta evita (severidad 1; la 2 solo es precaución), con la forma
+// de un bloqueo total: un polígono que cierra las calles que lo tocan (o pasan a ≤ 20 m)
+function zonasComoBloqueos(zonas) {
+  return (zonas?.features ?? [])
+    .filter((zona) => zona?.properties?.severidad === 1)
+    .map((zona) => ({ type: 'Feature', geometry: zona.geometry, properties: { tipo: 'total', zonaId: zona.properties.id } }))
+}
+
+// ¿El tramo [a, b] toca de verdad la zona? Sin el margen de 20 m de los bloqueos.
+// Con a == b dice si un punto está dentro de la zona (o en su borde).
+function tocaZonaSinMargen(a, b, zonaBloqueo) {
+  const forma = a[0] === b[0] && a[1] === b[1] ? point(a) : lineString([a, b])
+  return booleanIntersects(forma, zonaBloqueo.geometry)
+}
 
 const INICIAL = { fase: 'inactivo', error: null, zona: null, origen: null, precisionM: null, ubicadoEn: null }
 
@@ -30,23 +49,42 @@ const INICIAL = { fase: 'inactivo', error: null, zona: null, origen: null, preci
 // Dijkstra solo ve la red de calles. Aquí se revisa lo que queda fuera de ella:
 // - el tramo de la persona a la primera esquina (hasta 300 m),
 // - la posición real de cada punto de reunión y su tramo desde la última esquina.
-// Cualquiera de esos tramos dentro de un bloqueo total o del radio crítico de un sismo fuerte
-// se descarta, igual que una calle.
-function calcularConZona(zona, destinos, hayCalleCerca, origen, sismos, bloqueos) {
+// Cualquiera de esos tramos dentro de un bloqueo total, de una zona de peligro o del radio
+// crítico de un sismo fuerte se descarta, igual que una calle.
+//
+// Zonas de peligro (igual que la ruta en línea): la zona donde está la persona NO se evita,
+// porque si no, no podría salir; la ruta la saca y la pantalla lo avisa (origenEnZona).
+// Pero ningún destino puede quedar dentro de una zona, tampoco de esa.
+// "Estar dentro" es estar DE VERDAD dentro (sin margen). Si la persona está a unos metros
+// fuera del borde, la zona sigue cerrando sus calles; solo su primer tramo a la calle se
+// revisa sin margen (si no, el margen de 20 m le impediría salir de donde está).
+function calcularConZona(zona, destinos, hayCalleCerca, origen, sismos, bloqueos, zonasEvitar) {
   try {
     if (destinos.length === 0) return { estado: 'sin-puntos' }
     if (!hayCalleCerca) return { estado: 'lejos-de-calles' }
 
     const sismosActivos = filtrarSismosActivos(sismos, Date.now())
-    const bloqueado = (a, b) => tramoBloqueadoAPie(a, b, sismosActivos, { bloqueos })
+    const dentroDe = (punto, lista) => tramoBloqueadoAPie(punto, punto, SIN_SISMOS, { bloqueos: lista })
+    const zonasDondeEstoy = zonasEvitar.filter((z) => tocaZonaSinMargen(origen, origen, z))
+    const zonasJuntoAMi = zonasEvitar.filter((z) => !zonasDondeEstoy.includes(z) && dentroDe(origen, [z]))
+    const bloqueosRuta = [...bloqueos, ...zonasEvitar.filter((z) => !zonasDondeEstoy.includes(z))]
+    const bloqueado = (a, b) => tramoBloqueadoAPie(a, b, sismosActivos, { bloqueos: bloqueosRuta })
+    // Desde donde está la persona: las zonas junto a ella se revisan sin margen
+    const bloqueosDesdeOrigen = bloqueosRuta.filter((b) => !zonasJuntoAMi.includes(b))
+    const bloqueadoDesdeOrigen = (a, b) =>
+      tramoBloqueadoAPie(a, b, sismosActivos, { bloqueos: bloqueosDesdeOrigen }) ||
+      zonasJuntoAMi.some((z) => tocaZonaSinMargen(a, b, z))
     const coordenadasNodo = (id) => zona.grafo.nodos[id].coordenadas
 
-    // ¿La persona misma está en una zona de peligro?
-    if (bloqueado(origen, origen)) return { estado: 'sin-ruta', motivo: 'origen-en-zona-de-peligro' }
+    // ¿La persona misma está en un bloqueo total o cerca del epicentro de un sismo fuerte?
+    if (bloqueadoDesdeOrigen(origen, origen)) return { estado: 'sin-ruta', motivo: 'origen-en-zona-de-peligro' }
 
     // Se revisa cada punto por su posición real, no solo por la esquina a la que se pegó
     const puntosSeguros = destinos.filter(
-      (p) => !bloqueado(p.coordenadas, p.coordenadas) && !bloqueado(coordenadasNodo(p.nodoId), p.coordenadas),
+      (p) =>
+        !bloqueado(p.coordenadas, p.coordenadas) &&
+        !bloqueado(coordenadasNodo(p.nodoId), p.coordenadas) &&
+        !dentroDe(p.coordenadas, zonasEvitar),
     )
     if (puntosSeguros.length === 0) return { estado: 'sin-ruta', motivo: 'refugios-inalcanzables' }
 
@@ -56,7 +94,7 @@ function calcularConZona(zona, destinos, hayCalleCerca, origen, sismos, bloqueos
     // Hay calles cerca, pero ninguna conectada con un punto de reunión o refugio seguro
     if (nodoOrigen === null) return { estado: 'sin-ruta', motivo: 'origen-aislado' }
     // ¿El camino de la persona a esa primera calle cruza un peligro?
-    if (bloqueado(origen, coordenadasNodo(nodoOrigen))) {
+    if (bloqueadoDesdeOrigen(origen, coordenadasNodo(nodoOrigen))) {
       return { estado: 'sin-ruta', motivo: 'origen-en-zona-de-peligro' }
     }
 
@@ -65,7 +103,7 @@ function calcularConZona(zona, destinos, hayCalleCerca, origen, sismos, bloqueos
       nodoOrigen,
       puntosSeguros.map((p) => p.nodoId),
       sismosActivos,
-      { bloqueos },
+      { bloqueos: bloqueosRuta },
     )
     if (ruta.estado !== 'ok') return { estado: 'sin-ruta', motivo: ruta.motivo }
 
@@ -88,6 +126,8 @@ function calcularConZona(zona, destinos, hayCalleCerca, origen, sismos, bloqueos
       estado: 'listo',
       resultado: {
         ...ruta,
+        // La persona está dentro de una zona de peligro: la ruta la saca de ahí
+        origenEnZona: zonasDondeEstoy.length > 0,
         distanciaM,
         distanciaKm: Math.round(distanciaM / 100) / 10,
         ruta: lineaCompleta,
@@ -113,11 +153,14 @@ function calcularConZona(zona, destinos, hayCalleCerca, origen, sismos, bloqueos
 // - bloqueos: Features de bloqueos (Supabase), con properties.tipo 'total' o 'solo_vehiculos'.
 //   Debe ser un arreglo ESTABLE (guardado en estado o con useMemo): si se crea uno nuevo
 //   en cada render, la ruta se recalcula en cada render y la pantalla se vuelve lenta.
+// - zonas: FeatureCollection de zonas de peligro (Supabase). Las de severidad 1 se evitan.
+//   null = no se pudieron cargar (la pantalla lo avisa con sinDatosZonas).
 //
 // La ruta se vuelve a calcular sola si cambian los sismos o los bloqueos, usando la
 // zona ya descargada: así una ruta vieja nunca queda en pantalla pasando por un peligro nuevo.
-export function useRutaEvacuacion({ sismos, bloqueos = SIN_BLOQUEOS, refugios = null }) {
+export function useRutaEvacuacion({ sismos, bloqueos = SIN_BLOQUEOS, refugios = null, zonas = null }) {
   const [busqueda, setBusqueda] = useState(INICIAL)
+  const zonasEvitar = useMemo(() => (zonas ? zonasComoBloqueos(zonas) : SIN_ZONAS), [zonas])
 
   // Cada búsqueda tiene su número; si empieza otra, la anterior se ignora y se cancela
   const numeroBusquedaRef = useRef(0)
@@ -224,11 +267,12 @@ export function useRutaEvacuacion({ sismos, bloqueos = SIN_BLOQUEOS, refugios = 
     }
   }, [busqueda])
 
-  // La ruta depende de la zona, del origen, de los destinos y de los sismos y bloqueos ACTUALES
+  // La ruta depende de la zona, del origen, de los destinos y de los sismos, bloqueos y
+  // zonas de peligro ACTUALES
   const calculo = useMemo(() => {
     if (busqueda.fase !== 'zona-lista') return null
-    return calcularConZona(busqueda.zona, destinos, hayCalleCerca, busqueda.origen, sismos, bloqueos)
-  }, [busqueda, destinos, hayCalleCerca, sismos, bloqueos])
+    return calcularConZona(busqueda.zona, destinos, hayCalleCerca, busqueda.origen, sismos, bloqueos, zonasEvitar)
+  }, [busqueda, destinos, hayCalleCerca, sismos, bloqueos, zonasEvitar])
 
   // Los bloqueos 'total' sin confirmar SÍ bloquean la ruta (ante la duda, no se pasa).
   // Si por eso no hay ruta, la pantalla puede decir cuántos hay cerca sin confirmar.
@@ -260,6 +304,8 @@ export function useRutaEvacuacion({ sismos, bloqueos = SIN_BLOQUEOS, refugios = 
     // Sin datos de USGS (por ejemplo, sin señal desde que se abrió la app) el riesgo
     // sísmico es DESCONOCIDO: la pantalla debe avisarlo y no decir "riesgo bajo"
     sinDatosSismos: sismos == null,
+    // Sin datos de zonas de peligro la ruta no las puede evitar: la pantalla debe avisarlo
+    sinDatosZonas: zonas == null,
     buscarRuta,
     limpiar,
   }

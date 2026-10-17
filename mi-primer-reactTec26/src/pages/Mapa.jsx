@@ -107,6 +107,7 @@ function Mapa() {
     sismos: sismos.sismos,
     bloqueos: bloqueosParaRuta,
     refugios: refugios.refugios,
+    zonas: zonas.zonas,
   })
   const { resultado: resultadoRuta, sinDatosSismos } = evacuacion
   // Sin datos de sismos el riesgo es desconocido: la línea se dibuja gris, no verde

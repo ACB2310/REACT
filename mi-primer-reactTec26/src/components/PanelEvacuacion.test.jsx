@@ -171,6 +171,24 @@ describe('PanelEvacuacion', () => {
       ).toBeInTheDocument()
     })
 
+    it('sin datos de zonas de peligro avisa que la ruta no las toma en cuenta', () => {
+      conRuta({ sinDatosZonas: true })
+      expect(
+        screen.getByText('No se pudieron cargar las zonas de peligro: la ruta no las toma en cuenta.'),
+      ).toBeInTheDocument()
+    })
+
+    it('si estás dentro de una zona de peligro lo avisa', () => {
+      conRuta({ resultado: resultado({ origenEnZona: true }) })
+      expect(screen.getByText('Estás dentro de una zona de peligro: sal de ella por la ruta indicada.')).toBeInTheDocument()
+    })
+
+    it('fuera de zonas no muestra el aviso de zona', () => {
+      conRuta({ resultado: resultado({ origenEnZona: false }) })
+      expect(screen.queryByText(/Estás dentro de una zona de peligro/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/zonas de peligro: la ruta no las toma/)).not.toBeInTheDocument()
+    })
+
     it('con datos de bloqueos no muestra ese aviso', () => {
       conRuta()
       expect(screen.queryByText(/no los toma en cuenta/)).not.toBeInTheDocument()

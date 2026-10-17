@@ -11,6 +11,7 @@ import { useSesion } from '../hooks/useSesion.js'
 import { useIncidentes } from '../hooks/useBrigadas.js'
 import { useRutaEvacuacion } from '../hooks/useRutaEvacuacion.js'
 import { useRutaRefugio } from '../hooks/useRutaRefugio.js'
+import { useZonasPeligro } from '../hooks/useZonasPeligro.js'
 import { simularSupabaseListo } from '../test/simularSupabase.js'
 import { renovarBloqueo, eliminarBloqueo } from '../services/bloqueos.js'
 import { sismosEjemplo } from '../mocks/sismosEjemplo.js'
@@ -186,6 +187,7 @@ describe('Página Mapa', () => {
   beforeEach(() => {
     simularRutaRefugio()
     simularSupabaseListo({ useRefugios, useBloqueos, useSesion })
+    useZonasPeligro.mockReset().mockReturnValue({ zonas: null, estado: 'listo' })
     useSismos.mockReset()
     useCiclones.mockReset()
     useSatelite.mockReset()
@@ -589,16 +591,18 @@ describe('Página Mapa', () => {
       expect(capas.zonas.visible).toBe(true)
     })
 
-    it('le pasa a la ruta los sismos, los bloqueos y los refugios del mapa', () => {
+    it('le pasa a la ruta los sismos, los bloqueos, los refugios y las zonas de peligro del mapa', () => {
       const bloqueo = { type: 'Feature', geometry: { type: 'Point', coordinates: [-103.35, 20.67] }, properties: { tipo: 'total' } }
       const refugios = { type: 'FeatureCollection', features: [] }
+      const zonas = { type: 'FeatureCollection', features: [] }
+      useZonasPeligro.mockReturnValue({ zonas, estado: 'listo' })
       simularSupabaseListo(
         { useRefugios, useBloqueos, useSesion },
         { bloqueos: { bloqueos: { type: 'FeatureCollection', features: [bloqueo] } }, refugios: { refugios } },
       )
       render(<Mapa />, { wrapper: MemoryRouter })
 
-      expect(useRutaEvacuacion).toHaveBeenLastCalledWith({ sismos: dosSismos, bloqueos: [bloqueo], refugios })
+      expect(useRutaEvacuacion).toHaveBeenLastCalledWith({ sismos: dosSismos, bloqueos: [bloqueo], refugios, zonas })
     })
 
     it('los bloqueos que recibe la ruta son el mismo arreglo entre renders', () => {

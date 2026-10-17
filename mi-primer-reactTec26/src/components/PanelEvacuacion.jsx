@@ -71,6 +71,7 @@ function PanelEvacuacion({
   precisionM,
   sinDatosSismos,
   sinDatosBloqueos,
+  sinDatosZonas,
   bloqueosSinConfirmarCerca,
   buscarRuta,
   limpiar,
@@ -121,11 +122,18 @@ function PanelEvacuacion({
         </div>
       )}
 
+      {hayRuta && resultado.origenEnZona && (
+        <div className="mensaje-estado mensaje-aviso" role="alert">
+          <p>Estás dentro de una zona de peligro: sal de ella por la ruta indicada.</p>
+        </div>
+      )}
+
       {hayRuta && (
         <div className="mensaje-estado mensaje-info" role="status">
           <p>{textoRuta(resultado, sinDatosSismos)}</p>
           {sinDatosSismos && <p>No hay datos de sismos: el riesgo sísmico de la ruta es desconocido.</p>}
           {sinDatosBloqueos && <p>No se pudieron cargar los bloqueos reportados: la ruta no los toma en cuenta.</p>}
+          {sinDatosZonas && <p>No se pudieron cargar las zonas de peligro: la ruta no las toma en cuenta.</p>}
           <p className="fuente">{textoFuentes(resultado, zona, ubicadoEn)}</p>
           <p className="fuente">
             Ruta calculada en tu teléfono; puede no reflejar daños recientes. Sigue las indicaciones oficiales.

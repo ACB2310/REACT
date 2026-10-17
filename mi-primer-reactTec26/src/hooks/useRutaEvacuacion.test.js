@@ -593,6 +593,81 @@ describe('useRutaEvacuacion', () => {
     expect(localStorage.getItem(CLAVE_ZONA)).not.toBeNull()
   })
 
+  describe('zonas de peligro (las dibuja el coordinador)', () => {
+    function zona(severidad, [oeste, sur, este, norte]) {
+      return {
+        type: 'Feature',
+        id: severidad * 100,
+        geometry: { type: 'Polygon', coordinates: [[[oeste, sur], [este, sur], [este, norte], [oeste, norte], [oeste, sur]]] },
+        properties: { id: severidad * 100, severidad },
+      }
+    }
+    const coleccion = (...features) => ({ type: 'FeatureCollection', features })
+    // Corta la Calle Hidalgo entre n2 y n3 (el camino a Plaza Hidalgo)
+    const SOBRE_LA_CALLE = [-100.3035, 25.669, -100.3015, 25.671]
+    // Solo alrededor de Plaza Hidalgo
+    const SOBRE_LA_PLAZA = [-100.3004, 25.6699, -100.2998, 25.6705]
+    // Donde está la persona (n1 y n2), sin llegar a los puntos de reunión
+    const DONDE_ESTOY = [-100.312, 25.668, -100.304, 25.672]
+
+    it('una zona de severidad 1 cierra las calles: la ruta va a otro punto', async () => {
+      const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA, zonas: coleccion(zona(1, SOBRE_LA_CALLE)) }))
+      await buscar(result)
+      expect(result.current.estado).toBe('listo')
+      expect(result.current.resultado.refugioId).toBe('4')
+    })
+
+    it('una zona de severidad 2 (precaución) no cierra calles', async () => {
+      const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA, zonas: coleccion(zona(2, SOBRE_LA_CALLE)) }))
+      await buscar(result)
+      expect(result.current.resultado.refugioId).toBe('3')
+    })
+
+    it('un punto de reunión dentro de una zona no es destino', async () => {
+      const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA, zonas: coleccion(zona(1, SOBRE_LA_PLAZA)) }))
+      await buscar(result)
+      expect(result.current.resultado.refugioId).toBe('4')
+    })
+
+    // Igual que la ruta en línea: la zona donde estás no se evita (si no, no podrías salir)
+    it('si estás dentro de una zona, la ruta te saca y lo avisa', async () => {
+      const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA, zonas: coleccion(zona(1, DONDE_ESTOY)) }))
+      await buscar(result)
+      expect(result.current.estado).toBe('listo')
+      expect(result.current.resultado.origenEnZona).toBe(true)
+    })
+
+    // AQUI queda ~10 m al oeste del borde: fuera de la zona, aunque dentro del margen de 20 m.
+    // La zona cierra la única calle (n1–n2): no se puede cruzar por en medio de ella.
+    it('a unos metros FUERA del borde, la zona sí se evita', async () => {
+      const JUNTO_A_MI = [-100.3098, 25.6695, -100.306, 25.6705]
+      const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA, zonas: coleccion(zona(1, JUNTO_A_MI)) }))
+      await buscar(result)
+      expect(result.current.estado).toBe('sin-ruta')
+    })
+
+    it('fuera de zonas no hay aviso de zona', async () => {
+      const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA, zonas: coleccion(zona(1, SOBRE_LA_PLAZA)) }))
+      await buscar(result)
+      expect(result.current.resultado.origenEnZona).toBe(false)
+    })
+
+    it('los destinos dentro de la zona donde estás no cuentan', async () => {
+      const TODO = [-100.32, 25.66, -100.29, 25.68]
+      const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA, zonas: coleccion(zona(1, TODO)) }))
+      await buscar(result)
+      expect(result.current.estado).toBe('sin-ruta')
+      expect(result.current.motivo).toBe('refugios-inalcanzables')
+    })
+
+    it('sin datos de zonas lo dice (sinDatosZonas)', () => {
+      const sin = renderHook(() => useRutaEvacuacion({ sismos: VACIA, zonas: null }))
+      expect(sin.result.current.sinDatosZonas).toBe(true)
+      const con = renderHook(() => useRutaEvacuacion({ sismos: VACIA, zonas: coleccion() }))
+      expect(con.result.current.sinDatosZonas).toBe(false)
+    })
+  })
+
   it('al desmontar cancela la descarga en curso', async () => {
     let senal
     obtenerCallesYPuntosReunion.mockImplementation((coordenadas, opciones) => {
