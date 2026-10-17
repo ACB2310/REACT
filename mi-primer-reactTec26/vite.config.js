@@ -1,6 +1,7 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import { opcionesWorkbox } from './pwa.config.js'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -24,10 +25,8 @@ export default defineConfig({
           { src: '/icono-alerta.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
         ],
       },
-      workbox: {
-        navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//, /^\/auth\//],
-      },
+      // Qué se guarda para usar la app sin conexión (ver pwa.config.js)
+      workbox: opcionesWorkbox,
       devOptions: {
         enabled: false,
       },
