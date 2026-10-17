@@ -74,13 +74,28 @@ export async function cancelarIncidente(id) {
 // Avisa con `alCambiar()` cuando cambia un incidente, una brigada o sus miembros.
 // Canal PRIVADO: solo brigadistas y coordinadores lo pueden escuchar y nadie puede
 // mandar avisos falsos (migración 5). Devuelve una función para dejar de escuchar.
+//
+// Varias partes de la app escuchan a la vez (incidentes, brigadas, mi asignación):
+// se abre UN solo canal y se cierra cuando ya nadie escucha.
+const oyentes = new Set()
+let canalCompartido = null
+
 export function suscribirseABrigadas(alCambiar) {
   const cliente = obtenerCliente()
-  const canal = cliente
-    .channel('brigadas-cambios', { config: { private: true } })
-    .on('broadcast', { event: 'cambio' }, () => alCambiar())
-    .subscribe()
+  oyentes.add(alCambiar)
+  if (!canalCompartido) {
+    canalCompartido = cliente
+      .channel('brigadas-cambios', { config: { private: true } })
+      .on('broadcast', { event: 'cambio' }, () => {
+        for (const oyente of [...oyentes]) oyente()
+      })
+      .subscribe()
+  }
   return () => {
-    cliente.removeChannel(canal)
+    oyentes.delete(alCambiar)
+    if (oyentes.size === 0 && canalCompartido) {
+      cliente.removeChannel(canalCompartido)
+      canalCompartido = null
+    }
   }
 }

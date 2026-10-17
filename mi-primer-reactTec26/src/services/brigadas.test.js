@@ -172,3 +172,27 @@ describe('suscribirseABrigadas', () => {
     expect(cliente.removeChannel).toHaveBeenCalled()
   })
 })
+
+describe('suscribirseABrigadas: canal compartido', () => {
+  it('varios oyentes comparten un canal y se cierra cuando se va el último', () => {
+    const uno = vi.fn()
+    const dos = vi.fn()
+    const cancelarUno = suscribirseABrigadas(uno)
+    const cancelarDos = suscribirseABrigadas(dos)
+
+    expect(cliente.channel).toHaveBeenCalledTimes(1)
+    cliente.simularCambio()
+    expect(uno).toHaveBeenCalledTimes(1)
+    expect(dos).toHaveBeenCalledTimes(1)
+
+    cancelarUno()
+    expect(cliente.removeChannel).not.toHaveBeenCalled()
+    cliente.simularCambio()
+    expect(uno).toHaveBeenCalledTimes(1)
+    expect(dos).toHaveBeenCalledTimes(2)
+
+    cancelarDos()
+    expect(cliente.removeChannel).toHaveBeenCalledTimes(1)
+  })
+})
+
