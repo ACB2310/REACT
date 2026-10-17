@@ -46,6 +46,21 @@ describe('pedir', () => {
     await verificacion
   })
 
+  it('respeta tiempoLimiteMs', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('fetch', fetchQueNuncaResponde())
+    let termino = false
+    const promesa = pedir('https://ejemplo.org', { fuente: 'OpenStreetMap', tiempoLimiteMs: 60000 })
+    promesa.catch(() => {}).finally(() => {
+      termino = true
+    })
+
+    await vi.advanceTimersByTimeAsync(59999)
+    expect(termino).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    await expect(promesa).rejects.toThrow('OpenStreetMap tardó demasiado en responder')
+  })
+
   it('traduce el fallo de red', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Load failed')))
     await expect(pedir('https://ejemplo.org', { fuente: 'NASA GIBS' })).rejects.toThrow(
@@ -66,6 +81,16 @@ describe('pedir', () => {
 describe('obtenerJson', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
+  })
+
+  it('puede enviar un cuerpo con POST', async () => {
+    const fetchFalso = vi.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({}) })
+    vi.stubGlobal('fetch', fetchFalso)
+    const cuerpo = new URLSearchParams({ data: 'consulta' })
+
+    await obtenerJson('https://ejemplo.org', { fuente: 'OpenStreetMap', metodo: 'POST', cuerpo })
+
+    expect(fetchFalso.mock.calls[0][1]).toMatchObject({ method: 'POST', body: cuerpo })
   })
 
   it('devuelve el JSON de la respuesta', async () => {

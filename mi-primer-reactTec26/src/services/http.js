@@ -6,13 +6,13 @@ export const TIEMPO_LIMITE_MS = 15000
 
 // Ejecuta `tarea(senal)` cancelándola si quien llama lo pide o si se acaba el tiempo.
 // Convierte los errores técnicos en mensajes claros con el nombre de la fuente.
-async function conTiempoLimite({ signal, fuente }, tarea) {
+async function conTiempoLimite({ signal, fuente, tiempoLimiteMs = TIEMPO_LIMITE_MS }, tarea) {
   const controlador = new AbortController()
   let seAcaboElTiempo = false
   const temporizador = setTimeout(() => {
     seAcaboElTiempo = true
     controlador.abort()
-  }, TIEMPO_LIMITE_MS)
+  }, tiempoLimiteMs)
   const cancelarDesdeAfuera = () => controlador.abort()
   signal?.addEventListener('abort', cancelarDesdeAfuera)
   if (signal?.aborted) controlador.abort()
@@ -34,8 +34,8 @@ async function conTiempoLimite({ signal, fuente }, tarea) {
   }
 }
 
-async function pedirConSenal(url, { senal, fuente, metodo }) {
-  const respuesta = await fetch(url, { method: metodo, signal: senal })
+async function pedirConSenal(url, { senal, fuente, metodo, cuerpo }) {
+  const respuesta = await fetch(url, { method: metodo, body: cuerpo, signal: senal })
   if (!respuesta.ok) {
     throw new Error(`${fuente} respondió ${respuesta.status}`)
   }
@@ -43,14 +43,16 @@ async function pedirConSenal(url, { senal, fuente, metodo }) {
 }
 
 // Hace la petición y devuelve la respuesta (Response) si salió bien.
-export function pedir(url, { signal, fuente, metodo = 'GET' } = {}) {
-  return conTiempoLimite({ signal, fuente }, (senal) => pedirConSenal(url, { senal, fuente, metodo }))
+// `tiempoLimiteMs` permite esperar más en fuentes lentas (por ejemplo, Overpass).
+export function pedir(url, { signal, fuente, metodo = 'GET', tiempoLimiteMs } = {}) {
+  return conTiempoLimite({ signal, fuente, tiempoLimiteMs }, (senal) => pedirConSenal(url, { senal, fuente, metodo }))
 }
 
 // Hace la petición y devuelve el cuerpo ya convertido desde JSON.
-export function obtenerJson(url, { signal, fuente } = {}) {
-  return conTiempoLimite({ signal, fuente }, async (senal) => {
-    const respuesta = await pedirConSenal(url, { senal, fuente, metodo: 'GET' })
+// Con `metodo: 'POST'` y `cuerpo` se puede enviar un formulario (por ejemplo, a Overpass).
+export function obtenerJson(url, { signal, fuente, tiempoLimiteMs, metodo = 'GET', cuerpo } = {}) {
+  return conTiempoLimite({ signal, fuente, tiempoLimiteMs }, async (senal) => {
+    const respuesta = await pedirConSenal(url, { senal, fuente, metodo, cuerpo })
     try {
       return await respuesta.json()
     } catch (error) {
