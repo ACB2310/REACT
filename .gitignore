@@ -1,0 +1,3 @@
+# Copias comprimidas del proyecto: no van al repo (pueden traer .env.local)
+*.tar.gz
+*.zip
