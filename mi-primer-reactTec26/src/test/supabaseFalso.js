@@ -7,11 +7,12 @@
 //   cliente.respuestas.rpc.reportar_bloqueo = { data: 7, error: null }
 import { vi } from 'vitest'
 
-export function crearSupabaseFalso() {
+// `sesionInicial`: la sesión guardada en el navegador al abrir la app (o null)
+export function crearSupabaseFalso({ sesionInicial = null } = {}) {
   const respuestas = { vistas: {}, rpc: {} }
   const canales = []
   let alCambiarSesion = null
-  let sesion = null
+  let sesion = sesionInicial
 
   // Consulta encadenable: from('vista').select('*').gt(...).abortSignal(...)
   function consulta(vista) {
@@ -55,8 +56,10 @@ export function crearSupabaseFalso() {
     }),
     auth: {
       getSession: vi.fn(async () => ({ data: { session: sesion }, error: null })),
+      // Como Supabase: avisa enseguida la sesión inicial (INITIAL_SESSION)
       onAuthStateChange: vi.fn((manejador) => {
         alCambiarSesion = manejador
+        queueMicrotask(() => manejador('INITIAL_SESSION', sesion))
         return { data: { subscription: { unsubscribe: vi.fn() } } }
       }),
       signInAnonymously: vi.fn(async () => {
