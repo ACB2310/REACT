@@ -25,6 +25,14 @@ describe('vulnerabilidadDeVia', () => {
     expect(vulnerabilidadDeVia({ highway: 'footway', tunnel: 'yes' })).toBeCloseTo(0.5, 10)
   })
 
+  it('un pasaje bajo un edificio no cuenta como túnel', () => {
+    expect(vulnerabilidadDeVia({ highway: 'footway', tunnel: 'building_passage' })).toBe(0)
+  })
+
+  it('una vía donde caminar no se recomienda suma 0.3', () => {
+    expect(vulnerabilidadDeVia({ highway: 'residential', foot: 'discouraged' })).toBeCloseTo(0.4, 10)
+  })
+
   it('un tipo desconocido o sin tags vale 0.2', () => {
     expect(vulnerabilidadDeVia({ highway: 'raceway' })).toBe(0.2)
     expect(vulnerabilidadDeVia(undefined)).toBe(0.2)
@@ -47,6 +55,38 @@ describe('construirZonaEvacuacion', () => {
   it('omite vías privadas o sin paso peatonal', () => {
     expect(grafo.nodos['6']).toBeUndefined()
     expect(grafo.nodos['7']).toBeUndefined()
+  })
+
+  // Después de un sismo no se debe mandar a la gente por el arroyo de una avenida
+  // que tiene su banqueta aparte (foot=use_sidepath) ni por lugares privados
+  it('omite vías donde caminar no está permitido o hay que usar la banqueta aparte', () => {
+    const viaCon = (id, tags) => ({
+      type: 'way',
+      id,
+      nodes: [id * 10, id * 10 + 1],
+      geometry: [{ lat: 25.7, lon: -100.31 }, { lat: 25.7, lon: -100.3 }],
+      tags: { highway: 'primary', ...tags },
+    })
+    const prohibidas = [
+      viaCon(1, { foot: 'use_sidepath' }),
+      viaCon(2, { foot: 'private' }),
+      viaCon(3, { access: 'customers' }),
+      viaCon(4, { access: 'delivery' }),
+      viaCon(5, { access: 'military' }),
+    ]
+    expect(construirZonaEvacuacion(prohibidas).grafo.aristas).toEqual([])
+  })
+
+  it('acepta vías con acceso general cerrado pero paso a pie permitido', () => {
+    const viaCon = (id, foot) => ({
+      type: 'way',
+      id,
+      nodes: [id * 10, id * 10 + 1],
+      geometry: [{ lat: 25.7, lon: -100.31 }, { lat: 25.7, lon: -100.3 }],
+      tags: { highway: 'service', access: 'no', foot },
+    })
+    const { grafo: g } = construirZonaEvacuacion([viaCon(1, 'yes'), viaCon(2, 'designated'), viaCon(3, 'permissive')])
+    expect(g.aristas).toHaveLength(3)
   })
 
   it('cada arista lleva su tipo de vía y su vulnerabilidad', () => {

@@ -25,17 +25,33 @@ const EXTRA_PUENTE_O_TUNEL = 0.5
 // Distancia máxima (m) para "pegar" un punto (la persona o un punto de reunión) a la red de calles
 export const DISTANCIA_MAXIMA_A_CALLE_M = 300
 
+// Vías donde OSM dice que caminar "no se recomienda" (foot=discouraged)
+const EXTRA_CAMINAR_DESACONSEJADO = 0.3
+
 // Vulnerabilidad de una calle según sus etiquetas (tags) de OpenStreetMap
 export function vulnerabilidadDeVia(tags) {
   const base = VULNERABILIDAD_VIA[tags?.highway] ?? VULNERABILIDAD_OTRA_VIA
-  const esPuenteOTunel = (tags?.bridge && tags.bridge !== 'no') || (tags?.tunnel && tags.tunnel !== 'no')
-  return esPuenteOTunel ? base + EXTRA_PUENTE_O_TUNEL : base
+  const esPuente = Boolean(tags?.bridge) && tags.bridge !== 'no'
+  // Un pasaje bajo un edificio (tunnel=building_passage) no es un túnel de verdad
+  const esTunel = Boolean(tags?.tunnel) && tags.tunnel !== 'no' && tags.tunnel !== 'building_passage'
+  let vulnerabilidad = base
+  if (esPuente || esTunel) vulnerabilidad += EXTRA_PUENTE_O_TUNEL
+  if (tags?.foot === 'discouraged') vulnerabilidad += EXTRA_CAMINAR_DESACONSEJADO
+  return vulnerabilidad
 }
+
+// Valores de "foot" que prohíben caminar. "use_sidepath" significa que hay una banqueta
+// aparte: no se debe mandar a la gente por el arroyo de la avenida.
+const PIE_PROHIBIDO = new Set(['no', 'private', 'use_sidepath'])
+// Valores de "foot" que permiten caminar aunque el acceso general esté cerrado
+const PIE_PERMITIDO = new Set(['yes', 'designated', 'permissive'])
+// Accesos generales que cierran la vía al público
+const ACCESO_CERRADO = new Set(['no', 'private', 'customers', 'delivery', 'military'])
 
 // ¿Se puede caminar por esta vía? Se omiten las privadas y las que prohíben peatones
 function sePuedeCaminar(tags) {
-  if (tags?.foot === 'no') return false
-  if ((tags?.access === 'private' || tags?.access === 'no') && tags?.foot !== 'yes') return false
+  if (PIE_PROHIBIDO.has(tags?.foot)) return false
+  if (ACCESO_CERRADO.has(tags?.access) && !PIE_PERMITIDO.has(tags?.foot)) return false
   return true
 }
 
