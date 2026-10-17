@@ -247,6 +247,96 @@ describe('useRutaEvacuacion', () => {
     expect(result.current.estado).toBe('listo')
   })
 
+  // Sin señal, USGS puede no haber cargado nunca: "sin datos" NO es lo mismo que "sin sismos"
+  it('avisa que no hay datos de sismos en lugar de suponer que no hubo', async () => {
+    const { result, rerender } = renderHook(({ sismos }) => useRutaEvacuacion({ sismos }), {
+      initialProps: { sismos: null },
+    })
+    await buscar(result)
+    expect(result.current.estado).toBe('listo')
+    expect(result.current.sinDatosSismos).toBe(true)
+
+    rerender({ sismos: VACIA })
+    expect(result.current.sinDatosSismos).toBe(false)
+  })
+
+  it('dice desde cuándo es la ubicación usada', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 9, 16, 22, 5))
+    const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA }))
+    await buscar(result)
+    expect(result.current.ubicadoEn).toBe(Date.UTC(2026, 9, 16, 22, 5))
+  })
+
+  it('no guarda una zona sin puntos de reunión: la próxima vez vuelve a descargar', async () => {
+    obtenerCallesYPuntosReunion.mockResolvedValueOnce({ elementos: [], descargadoEn: Date.now() })
+    const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA }))
+    await buscar(result)
+    expect(result.current.estado).toBe('sin-puntos')
+    expect(localStorage.getItem(CLAVE_ZONA)).toBeNull()
+
+    await buscar(result)
+    expect(obtenerCallesYPuntosReunion).toHaveBeenCalledTimes(2)
+    expect(result.current.estado).toBe('listo')
+  })
+
+  it('limpiar durante una descarga nunca termina mostrando una ruta', async () => {
+    let terminarDescarga
+    obtenerCallesYPuntosReunion.mockImplementationOnce(
+      () => new Promise((resolver) => {
+        terminarDescarga = () => resolver({ elementos: elementosOverpassEjemplo, descargadoEn: Date.now() })
+      }),
+    )
+    const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA }))
+    act(() => {
+      result.current.buscarRuta()
+    })
+    await act(async () => {})
+    expect(result.current.estado).toBe('descargando')
+
+    act(() => {
+      result.current.limpiar()
+    })
+    await act(async () => {
+      terminarDescarga()
+    })
+    expect(result.current.estado).toBe('inactivo')
+    expect(result.current.resultado).toBeNull()
+  })
+
+  it('una búsqueda nueva oculta de inmediato la ruta anterior', async () => {
+    const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA }))
+    await buscar(result)
+    expect(result.current.resultado).not.toBeNull()
+
+    obtenerUbicacionActual.mockReturnValueOnce(new Promise(() => {}))
+    act(() => {
+      result.current.buscarRuta()
+    })
+    expect(result.current.estado).toBe('ubicando')
+    expect(result.current.resultado).toBeNull()
+  })
+
+  it('si se busca otra vez mientras se ubica, se ignora la ubicación vieja', async () => {
+    let entregarVieja
+    obtenerUbicacionActual.mockReturnValueOnce(
+      new Promise((resolver) => {
+        entregarVieja = () => resolver({ coordenadas: [-100.28, 25.69], precisionM: 10 })
+      }),
+    )
+    const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA }))
+    act(() => {
+      result.current.buscarRuta()
+    })
+    await buscar(result)
+    expect(result.current.estado).toBe('listo')
+
+    await act(async () => {
+      entregarVieja()
+    })
+    expect(result.current.estado).toBe('listo')
+    expect(result.current.origen).toEqual(AQUI)
+  })
+
   it('al desmontar cancela la descarga en curso', async () => {
     let senal
     obtenerCallesYPuntosReunion.mockImplementation((coordenadas, opciones) => {

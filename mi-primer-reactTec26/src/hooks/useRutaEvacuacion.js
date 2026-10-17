@@ -13,14 +13,13 @@ export const PRECISION_MAXIMA_M = 200
 // Se usa como valor por defecto para no crear un arreglo nuevo en cada render
 const SIN_BLOQUEOS = []
 
-const INICIAL = { fase: 'inactivo', error: null, zona: null, origen: null, precisionM: null }
+const INICIAL = { fase: 'inactivo', error: null, zona: null, origen: null, precisionM: null, ubicadoEn: null }
 
-// Calcula la ruta con la zona (calles y puntos de reunión) y la ubicación de la persona.
+// Calcula la ruta con la zona (calles y puntos de reunión) y el nodo de calle más cercano a la persona.
 // Devuelve { estado, resultado, error } y nunca lanza: cualquier problema es un estado.
-function calcularConZona(zona, origen, sismos, bloqueos) {
+function calcularConZona(zona, nodoOrigen, sismos, bloqueos) {
   try {
     if (zona.puntosReunion.length === 0) return { estado: 'sin-puntos' }
-    const nodoOrigen = nodoMasCercano(zona.grafo, origen)
     if (nodoOrigen === null) return { estado: 'lejos-de-calles' }
 
     const ruta = calcularRutaEvacuacion(
@@ -45,7 +44,9 @@ function calcularConZona(zona, origen, sismos, bloqueos) {
 
 // Busca la ruta a pie más segura hacia un punto de reunión.
 // - sismos: FeatureCollection de USGS (se usan solo los de las últimas 72 h)
-// - bloqueos: Features de bloqueos (por ahora ninguno; llegarán con Supabase)
+// - bloqueos: Features de bloqueos (por ahora ninguno; llegarán con Supabase).
+//   Debe ser un arreglo ESTABLE (guardado en estado o con useMemo): si se crea uno nuevo
+//   en cada render, la ruta se recalcula en cada render y la pantalla se vuelve lenta.
 //
 // La ruta se vuelve a calcular sola si cambian los sismos o los bloqueos, usando la
 // zona ya descargada: así una ruta vieja nunca queda en pantalla pasando por un peligro nuevo.
@@ -56,8 +57,14 @@ export function useRutaEvacuacion({ sismos, bloqueos = SIN_BLOQUEOS }) {
   const numeroBusquedaRef = useRef(0)
   const controladorRef = useRef(null)
 
-  // Al salir de la pantalla se cancela cualquier descarga en curso
-  useEffect(() => () => controladorRef.current?.abort(), [])
+  // Al salir de la pantalla se cancela cualquier descarga en curso y se descarta su resultado
+  useEffect(
+    () => () => {
+      numeroBusquedaRef.current++
+      controladorRef.current?.abort()
+    },
+    [],
+  )
 
   const buscarRuta = useCallback(async () => {
     controladorRef.current?.abort()
@@ -71,8 +78,10 @@ export function useRutaEvacuacion({ sismos, bloqueos = SIN_BLOQUEOS }) {
       // 1. ¿Dónde está la persona?
       const { coordenadas, precisionM } = await obtenerUbicacionActual()
       if (!sigueVigente()) return
+      // Datos de la ubicación que acompañan a cada estado siguiente
+      const ubicacion = { origen: coordenadas, precisionM, ubicadoEn: Date.now() }
       if (precisionM !== null && precisionM > PRECISION_MAXIMA_M) {
-        setBusqueda({ ...INICIAL, fase: 'ubicacion-imprecisa', origen: coordenadas, precisionM })
+        setBusqueda({ ...INICIAL, ...ubicacion, fase: 'ubicacion-imprecisa' })
         return
       }
 
@@ -81,21 +90,23 @@ export function useRutaEvacuacion({ sismos, bloqueos = SIN_BLOQUEOS }) {
       if (!zona) {
         // 3. Si no, se descargan (solo si hay señal) y se guardan para la próxima vez
         if (navigator.onLine === false) {
-          setBusqueda({ ...INICIAL, fase: 'sin-zona-offline', origen: coordenadas, precisionM })
+          setBusqueda({ ...INICIAL, ...ubicacion, fase: 'sin-zona-offline' })
           return
         }
-        setBusqueda({ ...INICIAL, fase: 'descargando', origen: coordenadas, precisionM })
+        setBusqueda({ ...INICIAL, ...ubicacion, fase: 'descargando' })
         const { elementos, descargadoEn } = await obtenerCallesYPuntosReunion(coordenadas, {
           signal: controlador.signal,
         })
         if (!sigueVigente()) return
         zona = { centro: coordenadas, descargadoEn, ...construirZonaEvacuacion(elementos) }
-        // Si no se puede guardar (almacenamiento lleno o bloqueado), la ruta se calcula igual
-        guardarZona(zona)
+        // Solo se guarda una zona útil: si vino vacía (sin calles o sin puntos de reunión)
+        // se vuelve a intentar la próxima vez en lugar de quedarse así 7 días.
+        // Si no se puede guardar (almacenamiento lleno o bloqueado), la ruta se calcula igual.
+        if (zona.puntosReunion.length > 0 && zona.grafo.aristas.length > 0) guardarZona(zona)
       }
 
       // 4. Con la zona lista, la ruta se calcula abajo (useMemo)
-      setBusqueda({ ...INICIAL, fase: 'zona-lista', zona, origen: coordenadas, precisionM })
+      setBusqueda({ ...INICIAL, ...ubicacion, fase: 'zona-lista', zona })
     } catch (e) {
       if (!sigueVigente() || e?.name === 'AbortError') return
       setBusqueda({ ...INICIAL, fase: 'error', error: e?.message || 'Error desconocido' })
@@ -108,11 +119,21 @@ export function useRutaEvacuacion({ sismos, bloqueos = SIN_BLOQUEOS }) {
     setBusqueda(INICIAL)
   }, [])
 
+  // El nodo de calle más cercano a la persona solo cambia con una búsqueda nueva
+  const nodoOrigen = useMemo(() => {
+    if (busqueda.fase !== 'zona-lista') return null
+    try {
+      return nodoMasCercano(busqueda.zona.grafo, busqueda.origen)
+    } catch {
+      return null
+    }
+  }, [busqueda])
+
   // La ruta depende de la zona, del origen y de los sismos y bloqueos ACTUALES
   const calculo = useMemo(() => {
     if (busqueda.fase !== 'zona-lista') return null
-    return calcularConZona(busqueda.zona, busqueda.origen, sismos, bloqueos)
-  }, [busqueda, sismos, bloqueos])
+    return calcularConZona(busqueda.zona, nodoOrigen, sismos, bloqueos)
+  }, [busqueda, nodoOrigen, sismos, bloqueos])
 
   return {
     estado: calculo ? calculo.estado : busqueda.fase,
@@ -121,6 +142,10 @@ export function useRutaEvacuacion({ sismos, bloqueos = SIN_BLOQUEOS }) {
     zona: busqueda.zona,
     origen: busqueda.origen,
     precisionM: busqueda.precisionM,
+    ubicadoEn: busqueda.ubicadoEn,
+    // Sin datos de USGS (por ejemplo, sin señal desde que se abrió la app) el riesgo
+    // sísmico es DESCONOCIDO: la pantalla debe avisarlo y no decir "riesgo bajo"
+    sinDatosSismos: sismos == null,
     buscarRuta,
     limpiar,
   }
