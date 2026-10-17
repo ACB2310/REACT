@@ -32,7 +32,7 @@ describe('useRutaRefugio', () => {
   let asegurarSesion
 
   beforeEach(() => {
-    evacuacion = { buscarRuta: vi.fn(), limpiar: vi.fn() }
+    evacuacion = { buscarRuta: vi.fn(), limpiar: vi.fn(), guardarZonaSinConexion: vi.fn() }
     asegurarSesion = vi.fn().mockResolvedValue({ id: 'u1' })
     obtenerUbicacionActual.mockReset().mockResolvedValue({ coordenadas: ORIGEN, precisionM: 10 })
     calcularRutaRefugio.mockReset().mockResolvedValue(RUTA)
@@ -55,6 +55,20 @@ describe('useRutaRefugio', () => {
     expect(result.current.fuente).toBe('ors')
     expect(result.current.origen).toEqual(ORIGEN)
     expect(evacuacion.buscarRuta).not.toHaveBeenCalled()
+  })
+
+  // Etapa 7: así la ruta a pie sirve después sin señal en esta zona
+  it.each(['a_pie', 'carro'])('tras la ruta en línea (%s) guarda las calles de la zona', async (modo) => {
+    const { result } = usar(modo)
+    await act(() => result.current.buscar())
+    expect(evacuacion.guardarZonaSinConexion).toHaveBeenCalledWith(ORIGEN)
+  })
+
+  it('si la ruta en línea falla no descarga calles aparte', async () => {
+    calcularRutaRefugio.mockRejectedValue(errorConCodigo('El servicio de rutas llegó a su límite de hoy.', 'ORS_LIMITE'))
+    const { result } = usar('carro')
+    await act(() => result.current.buscar())
+    expect(evacuacion.guardarZonaSinConexion).not.toHaveBeenCalled()
   })
 
   it('"sin ruta" de la función queda en estado sin-ruta', async () => {

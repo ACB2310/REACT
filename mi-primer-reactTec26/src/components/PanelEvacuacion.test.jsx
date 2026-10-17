@@ -58,7 +58,7 @@ describe('PanelEvacuacion', () => {
     ['calculando', 'Calculando la ruta más segura…'],
     ['sin-puntos', 'No hay puntos de reunión ni refugios abiertos registrados cerca de ti. Sigue las indicaciones de Protección Civil.'],
     ['lejos-de-calles', 'Estás lejos de las calles registradas; no se pudo calcular una ruta. Sigue las indicaciones de Protección Civil.'],
-    ['sin-zona-offline', 'Sin conexión y sin calles guardadas de esta zona. Cuando tengas señal, toca "Ruta a punto de reunión" para guardarlas. Sigue las indicaciones de Protección Civil.'],
+    ['sin-zona-offline', 'Sin conexión y sin calles guardadas de esta zona. Cuando tengas señal, toca "Ruta a refugio" para guardarlas. Sigue las indicaciones de Protección Civil.'],
   ])('estado %s', (estado, texto) => {
     mostrar({ estado })
     expect(screen.getByText(texto)).toBeInTheDocument()

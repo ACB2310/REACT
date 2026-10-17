@@ -73,7 +73,7 @@ Reglas:
 | Open-Meteo (Marine y Forecast API) | Clima, oleaje, corrientes | No | Frontend |
 | NASA GIBS (WMTS) | Teselas de satélite `GOES-East_ABI_GeoColor`; la hora se obtiene con `HEAD` + cabecera `Layer-Time-Actual` | No | Frontend (capa del mapa) |
 | NASA FIRMS | Incendios | Sí | Edge Function |
-| OpenStreetMap (API Overpass, `overpass-api.de`, **POST**; GET responde 406) | Calles caminables y puntos de reunión (`emergency=assembly_point`) | No | Frontend, **solo cuando la persona lo pide** (uso justo; tarda hasta ~40 s) |
+| OpenStreetMap (API Overpass, `overpass-api.de`, **POST**; GET responde 406) | Calles caminables y puntos de reunión (`emergency=assembly_point`) | No | Frontend, **solo cuando la persona pide una ruta** (uso justo; tarda hasta ~40 s); una vez por zona cada 7 días |
 | OpenRouteService | Rutas en carro y a pie, `avoid_polygons`, matrices, isócronas | Sí | **Edge Function** |
 
 Notas sobre ciclones (decisión del 2026-10-16):
@@ -162,7 +162,7 @@ Decisiones de la etapa 3 (2026-10-16):
 - Si no existe ninguna ruta posible, decirlo explícitamente en la interfaz. Nunca mostrar una ruta que cruce un bloqueo `total`.
 
 **Ruta a pie sin conexión (Dijkstra con riesgo sísmico)** — complemento de ORS (decisión del 2026-10-16). ORS sigue siendo el motor principal en línea (etapa 4).
-- Botón "Ruta a punto de reunión". Las calles y los puntos de reunión salen de OpenStreetMap (Overpass), se descargan **solo al pedirlo** y se guardan en el teléfono (`localStorage`, sirve a ≤ 500 m y ≤ 7 días) para calcular **sin red**.
+- Es el respaldo a pie de "Ruta a refugio" (su botón propio, "Ruta a punto de reunión", ya no se muestra). Las calles y los puntos de reunión salen de OpenStreetMap (Overpass) y se guardan en el teléfono (`localStorage`, sirve a ≤ 500 m y ≤ 7 días) para calcular **sin red**. Se descargan al usar el respaldo con señal y, desde la etapa 7, también **en segundo plano tras cada ruta en línea** (`guardarZonaSinConexion`, si faltan; sus errores no se muestran).
 - Destinos: puntos de reunión de OSM y refugios **abiertos** de Supabase, a ≤ 300 m de una calle. Cada destino y el tramo de la persona a la primera calle se revisan por su **posición real**.
 - Costo de cada calle: `distancia * (1 + factorRiesgoSismico + vulnerabilidadVia)`. Un sismo M ≥ 6 **bloquea** las calles dentro de su radio crítico (¼ del radio de influencia `10^(0.5·mag − 1.5)` km). Solo cuentan los sismos de las últimas 72 h.
 - **Todos** los bloqueos `total` vigentes bloquean, **confirmados o no** (decisión del usuario). Si por eso no hay ruta, el panel avisa cuántos hay sin confirmar cerca. Un bloqueo con formato desconocido **detiene** el cálculo. Puntos, líneas y polígonos cierran las calles a ≤ 20 m.

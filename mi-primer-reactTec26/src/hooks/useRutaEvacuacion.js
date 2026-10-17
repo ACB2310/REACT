@@ -42,6 +42,18 @@ function tocaZonaSinMargen(a, b, zonaBloqueo) {
 
 const INICIAL = { fase: 'inactivo', error: null, zona: null, origen: null, precisionM: null, ubicadoEn: null }
 
+// Descarga las calles y puntos de reunión alrededor de `coordenadas` y los guarda para la
+// próxima vez. Solo se guarda una zona con calles: si vino vacía se vuelve a intentar la
+// próxima vez en lugar de quedarse así 7 días. Una zona con calles sirve aunque no tenga
+// puntos de reunión de OSM, porque también se usan los refugios oficiales.
+// Si no se puede guardar (almacenamiento lleno o bloqueado), la zona se devuelve igual.
+async function descargarZona(coordenadas, signal) {
+  const { elementos, descargadoEn } = await obtenerCallesYPuntosReunion(coordenadas, { signal })
+  const zona = { centro: coordenadas, descargadoEn, ...construirZonaEvacuacion(elementos) }
+  if (zona.grafo.aristas.length > 0) guardarZona(zona)
+  return zona
+}
+
 // Calcula la ruta con la zona (calles y puntos de reunión), la ubicación de la persona (`origen`)
 // y el nodo de calle más cercano a ella. Devuelve { estado, motivo, resultado, error } y nunca
 // lanza: cualquier problema es un estado.
@@ -165,12 +177,15 @@ export function useRutaEvacuacion({ sismos, bloqueos = SIN_BLOQUEOS, refugios = 
   // Cada búsqueda tiene su número; si empieza otra, la anterior se ignora y se cancela
   const numeroBusquedaRef = useRef(0)
   const controladorRef = useRef(null)
+  // La descarga en segundo plano (guardarZonaSinConexion) va aparte: no cancela la búsqueda
+  const descargaFondoRef = useRef(null)
 
   // Al salir de la pantalla se cancela cualquier descarga en curso y se descarta su resultado
   useEffect(
     () => () => {
       numeroBusquedaRef.current++
       controladorRef.current?.abort()
+      descargaFondoRef.current?.abort()
     },
     [],
   )
@@ -203,16 +218,8 @@ export function useRutaEvacuacion({ sismos, bloqueos = SIN_BLOQUEOS, refugios = 
           return
         }
         setBusqueda({ ...INICIAL, ...ubicacion, fase: 'descargando' })
-        const { elementos, descargadoEn } = await obtenerCallesYPuntosReunion(coordenadas, {
-          signal: controlador.signal,
-        })
+        zona = await descargarZona(coordenadas, controlador.signal)
         if (!sigueVigente()) return
-        zona = { centro: coordenadas, descargadoEn, ...construirZonaEvacuacion(elementos) }
-        // Solo se guarda una zona con calles: si vino vacía se vuelve a intentar la próxima
-        // vez en lugar de quedarse así 7 días. Una zona con calles sirve aunque no tenga
-        // puntos de reunión de OSM, porque también se usan los refugios oficiales.
-        // Si no se puede guardar (almacenamiento lleno o bloqueado), la ruta se calcula igual.
-        if (zona.grafo.aristas.length > 0) guardarZona(zona)
       }
 
       // 4. Con la zona lista, la ruta se calcula abajo (useMemo)
@@ -227,6 +234,21 @@ export function useRutaEvacuacion({ sismos, bloqueos = SIN_BLOQUEOS, refugios = 
     numeroBusquedaRef.current++
     controladorRef.current?.abort()
     setBusqueda(INICIAL)
+  }, [])
+
+  // Etapa 7: tras una ruta en línea, guarda en segundo plano las calles de la zona (si
+  // faltan) para que la ruta a pie sirva después sin señal. No toca lo que se ve en
+  // pantalla y nunca lanza: si falla, se vuelve a intentar con la próxima ruta.
+  const guardarZonaSinConexion = useCallback(async (coordenadas) => {
+    if (navigator.onLine === false || leerZona(coordenadas, Date.now())) return
+    descargaFondoRef.current?.abort()
+    const controlador = new AbortController()
+    descargaFondoRef.current = controlador
+    try {
+      await descargarZona(coordenadas, controlador.signal)
+    } catch {
+      // Sin aviso: la ruta en línea ya se mostró
+    }
   }, [])
 
 
@@ -308,5 +330,6 @@ export function useRutaEvacuacion({ sismos, bloqueos = SIN_BLOQUEOS, refugios = 
     sinDatosZonas: zonas == null,
     buscarRuta,
     limpiar,
+    guardarZonaSinConexion,
   }
 }

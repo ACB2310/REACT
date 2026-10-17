@@ -693,4 +693,56 @@ describe('useRutaEvacuacion', () => {
     unmount()
     expect(senal.aborted).toBe(true)
   })
+
+  // Etapa 7: tras una ruta en línea se guardan las calles en segundo plano, para que la
+  // ruta a pie funcione después sin señal (antes solo se guardaban al usar el respaldo)
+  describe('guardarZonaSinConexion', () => {
+    async function guardarEnSegundoPlano(result, coordenadas = AQUI) {
+      await act(async () => {
+        await result.current.guardarZonaSinConexion(coordenadas)
+      })
+    }
+
+    it('descarga y guarda las calles sin mostrar nada', async () => {
+      const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA }))
+      await guardarEnSegundoPlano(result)
+
+      expect(obtenerCallesYPuntosReunion).toHaveBeenCalledWith(AQUI, expect.anything())
+      expect(localStorage.getItem(CLAVE_ZONA)).not.toBeNull()
+      expect(result.current.estado).toBe('inactivo')
+      expect(result.current.resultado).toBeNull()
+    })
+
+    it('con calles ya guardadas de la zona no las vuelve a descargar', async () => {
+      const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA }))
+      await guardarEnSegundoPlano(result)
+      await guardarEnSegundoPlano(result)
+      expect(obtenerCallesYPuntosReunion).toHaveBeenCalledTimes(1)
+    })
+
+    it('sin conexión no intenta descargar', async () => {
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+      const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA }))
+      await guardarEnSegundoPlano(result)
+      expect(obtenerCallesYPuntosReunion).not.toHaveBeenCalled()
+    })
+
+    it('si OpenStreetMap falla no avisa nada ni rompe la app', async () => {
+      obtenerCallesYPuntosReunion.mockRejectedValue(new Error('OpenStreetMap respondió 504'))
+      const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA }))
+      await guardarEnSegundoPlano(result)
+      expect(result.current.estado).toBe('inactivo')
+      expect(result.current.error).toBeNull()
+      expect(localStorage.getItem(CLAVE_ZONA)).toBeNull()
+    })
+
+    it('no cancela ni cambia una búsqueda de ruta en curso', async () => {
+      const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA }))
+      await buscar(result)
+      localStorage.clear()
+      await guardarEnSegundoPlano(result)
+      expect(result.current.estado).toBe('listo')
+      expect(localStorage.getItem(CLAVE_ZONA)).not.toBeNull()
+    })
+  })
 })

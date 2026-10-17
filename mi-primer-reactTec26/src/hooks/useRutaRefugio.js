@@ -79,6 +79,9 @@ export function useRutaRefugio({ modo, evacuacion, asegurarSesion }) {
         resultado,
         estado: resultado.estado === 'ruta' ? 'listo' : 'sin-ruta',
       })
+      // Etapa 7: con señal se guardan también las calles de aquí (en segundo plano), para
+      // que la ruta a pie funcione después sin conexión
+      evacuacionRef.current?.guardarZonaSinConexion?.(origen)
     } catch (e) {
       if (!sigueVigente() || e?.name === 'AbortError') return
       // Si el servicio de rutas falla (sin red, cuota, sin configurar), a pie hay respaldo

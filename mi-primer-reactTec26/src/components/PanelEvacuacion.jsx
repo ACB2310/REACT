@@ -15,7 +15,7 @@ const TEXTOS = {
 
 // Estados en los que no hay ruta: se dice explícitamente (CLAUDE.md)
 const TEXTOS_SIN_RUTA = {
-  'sin-zona-offline': `Sin conexión y sin calles guardadas de esta zona. Cuando tengas señal, toca "Ruta a punto de reunión" para guardarlas. ${SIGUE_A_PROTECCION_CIVIL}`,
+  'sin-zona-offline': `Sin conexión y sin calles guardadas de esta zona. Cuando tengas señal, toca "Ruta a refugio" para guardarlas. ${SIGUE_A_PROTECCION_CIVIL}`,
   'sin-puntos': `No hay puntos de reunión ni refugios abiertos registrados cerca de ti. ${SIGUE_A_PROTECCION_CIVIL}`,
   'lejos-de-calles': `Estás lejos de las calles registradas; no se pudo calcular una ruta. ${SIGUE_A_PROTECCION_CIVIL}`,
 }
