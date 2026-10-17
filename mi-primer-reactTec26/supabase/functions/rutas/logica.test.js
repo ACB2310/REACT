@@ -513,6 +513,8 @@ describe('ruta combinada: correcciones de la revisión', () => {
     expect(resultado.transbordo[0]).toBeLessThan(BLOQUEO[0])
     expect(distanciaKm(resultado.transbordo, BLOQUEO)).toBeGreaterThan(0.025)
     expect(lineaTocaAnillo(resultado.ruta.features[0].geometry.coordinates, circuloAlrededor(BLOQUEO))).toBe(false)
+    // El bloqueo es parcial: a pie SÍ se pasa por él (el tramo a pie lo cruza)
+    expect(lineaTocaAnillo(resultado.ruta.features[1].geometry.coordinates, circuloAlrededor(BLOQUEO))).toBe(true)
   })
 
   // ORS ajusta el inicio del tramo a pie a la banqueta más cercana: si queda lejos de donde
