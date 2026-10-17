@@ -120,6 +120,34 @@ describe('CapaRutasEvacuacion', () => {
     expect(mapa.fuentes['evacuacion-puntos'].setData).toHaveBeenLastCalledWith(VACIA)
   })
 
+  // Tras un "sin ruta" el hook conserva el origen: un punto azul solo, sin ruta, confundiría
+  it('sin ruta no dibuja los puntos aunque lleguen origen y destino', () => {
+    const mapa = crearMapa()
+    render(<CapaRutasEvacuacion mapa={mapa} ruta={null} origen={ORIGEN} destino={DESTINO} />)
+    expect(mapa.fuentes['evacuacion-puntos'].definicion.data).toEqual(VACIA)
+  })
+
+  // Para quien no distingue bien los colores: el destino se ve más grande que el origen
+  it('el punto de reunión se dibuja más grande que la persona', () => {
+    const mapa = crearMapa()
+    render(<CapaRutasEvacuacion mapa={mapa} ruta={RUTA} origen={ORIGEN} destino={DESTINO} />)
+    expect(mapa.capas['evacuacion-puntos'].paint['circle-radius']).toEqual(['match', ['get', 'rol'], 'destino', 12, 8])
+  })
+
+  it('una ruta sin geometría no rompe la pantalla', () => {
+    const mapa = crearMapa()
+    const rota = { type: 'Feature', geometry: null, properties: {} }
+    expect(() => render(<CapaRutasEvacuacion mapa={mapa} ruta={rota} origen={ORIGEN} destino={DESTINO} />)).not.toThrow()
+  })
+
+  it('si encuadrar falla (mapa oculto o muy chico) no rompe la pantalla', () => {
+    const mapa = crearMapa()
+    mapa.fitBounds.mockImplementation(() => {
+      throw new Error('cannot fit within canvas')
+    })
+    expect(() => render(<CapaRutasEvacuacion mapa={mapa} ruta={RUTA} origen={ORIGEN} destino={DESTINO} />)).not.toThrow()
+  })
+
   it('se quita al desmontar', () => {
     const mapa = crearMapa()
     const { unmount } = render(<CapaRutasEvacuacion mapa={mapa} ruta={RUTA} origen={ORIGEN} destino={DESTINO} />)

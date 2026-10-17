@@ -20,8 +20,11 @@ function puntosDeLaRuta(origen, destino) {
 // Dibuja la ruta de evacuación a pie: una línea gruesa con borde blanco, de color según
 // su riesgo, más un punto azul donde está la persona y uno verde en el punto de reunión.
 // Va encima de todas las demás capas para que siempre se vea.
-function CapaRutasEvacuacion({ mapa, ruta, origen, destino }) {
-  const puntos = puntosDeLaRuta(origen, destino)
+function CapaRutasEvacuacion({ mapa, ruta: rutaRecibida, origen, destino }) {
+  // Una ruta sin geometría válida no se dibuja (en lugar de romper la pantalla)
+  const ruta = rutaRecibida?.geometry?.coordinates?.length >= 2 ? rutaRecibida : null
+  // Los puntos solo se dibujan junto con una ruta: un punto suelto sin ruta confundiría
+  const puntos = ruta ? puntosDeLaRuta(origen, destino) : COLECCION_VACIA
 
   useCapasMapa(mapa, {
     fuentes: [
@@ -53,7 +56,8 @@ function CapaRutasEvacuacion({ mapa, ruta, origen, destino }) {
         source: 'evacuacion-puntos',
         paint: {
           'circle-color': ['match', ['get', 'rol'], 'origen', '#2563eb', 'destino', '#16a34a', '#6b7280'],
-          'circle-radius': 9,
+          // El punto de reunión es más grande: así se distingue aunque no se vean bien los colores
+          'circle-radius': ['match', ['get', 'rol'], 'destino', 12, 8],
           'circle-stroke-color': '#ffffff',
           'circle-stroke-width': 2,
         },
@@ -86,7 +90,11 @@ function CapaRutasEvacuacion({ mapa, ruta, origen, destino }) {
       type: 'MultiPoint',
       coordinates: [...ruta.geometry.coordinates, ...(origen ? [origen] : []), ...(destino ? [destino] : [])],
     })
-    mapa.fitBounds([[oeste, sur], [este, norte]], { padding: 48, maxZoom: 17 })
+    try {
+      mapa.fitBounds([[oeste, sur], [este, norte]], { padding: 48, maxZoom: 17 })
+    } catch {
+      // Si el mapa está oculto o es muy pequeño no se puede encuadrar; la ruta igual se dibuja
+    }
   }, [mapa, ruta, origen, destino])
 
   return null
