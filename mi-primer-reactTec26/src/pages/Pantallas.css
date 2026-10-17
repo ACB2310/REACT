@@ -1,0 +1,230 @@
+/* Estilos compartidos de las pantallas con formulario: Reportar, Entrar y Refugios.
+   Móvil primero: una sola columna, botones grandes y texto claro. */
+
+.pantalla-formulario {
+  display: grid;
+  gap: 16px;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.pantalla-formulario h1 {
+  font-size: 1.375rem;
+}
+
+.pantalla-formulario h2 {
+  font-size: 1.125rem;
+}
+
+.texto-ayuda {
+  color: var(--texto-suave);
+}
+
+/* Mapa dentro de una pantalla de formulario: alto fijo para que quepa el formulario */
+.mapa-formulario {
+  position: relative;
+  height: 45dvh;
+  min-height: 260px;
+  overflow: hidden;
+  border: 1px solid var(--borde);
+  border-radius: 12px;
+}
+
+.campo {
+  display: grid;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.campo input,
+.campo select,
+.campo textarea {
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+  background-color: var(--superficie);
+  color: var(--texto);
+  font: inherit;
+  font-weight: 400;
+}
+
+.campo textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.campo input:focus-visible,
+.campo select:focus-visible,
+.campo textarea:focus-visible {
+  outline: 3px solid var(--primario);
+  outline-offset: 1px;
+}
+
+.contador {
+  justify-self: end;
+  color: var(--texto-suave);
+  font-size: 0.875rem;
+  font-weight: 400;
+}
+
+/* Opciones grandes tipo tarjeta (Parcial / Total) */
+.opciones-tarjeta {
+  display: grid;
+  gap: 8px;
+  border: none;
+}
+
+.opciones-tarjeta legend {
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+
+.opcion-tarjeta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 12px;
+  align-items: center;
+  min-height: 64px;
+  padding: 12px;
+  border: 2px solid var(--borde);
+  border-radius: 12px;
+  background-color: var(--superficie);
+  cursor: pointer;
+}
+
+.opcion-tarjeta:has(input:checked) {
+  border-color: var(--primario);
+}
+
+.opcion-tarjeta:has(input:focus-visible) {
+  outline: 3px solid var(--primario);
+  outline-offset: 2px;
+}
+
+.opcion-tarjeta input {
+  grid-row: span 2;
+  width: 24px;
+  height: 24px;
+  accent-color: var(--primario);
+}
+
+.opcion-tarjeta-titulo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.opcion-tarjeta-color {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+}
+
+.opcion-tarjeta-detalle {
+  color: var(--texto-suave);
+}
+
+/* Botones */
+.fila-botones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.boton-principal,
+.boton-secundario {
+  display: inline-flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+  padding: 0 20px;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.boton-principal {
+  border: none;
+  background-color: var(--primario);
+  color: var(--superficie);
+}
+
+.boton-secundario {
+  border: 2px solid var(--primario);
+  background-color: transparent;
+  color: var(--primario);
+}
+
+.boton-principal:disabled,
+.boton-secundario:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.boton-principal:focus-visible,
+.boton-secundario:focus-visible {
+  outline: 3px solid var(--texto);
+  outline-offset: 2px;
+}
+
+/* Lista de refugios para el coordinador */
+.lista-refugios {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+}
+
+.lista-refugios button {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 12px;
+  border: 2px solid var(--borde);
+  border-radius: 10px;
+  background-color: var(--superficie);
+  color: var(--texto);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lista-refugios button[aria-pressed='true'] {
+  border-color: var(--primario);
+}
+
+.etiqueta-sin-ubicacion {
+  color: var(--aviso-texto);
+  font-weight: 700;
+}
+
+.casilla {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  font-weight: 600;
+}
+
+.casilla input {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--primario);
+}
+
+.pantalla-formulario-seccion {
+  display: grid;
+  gap: 16px;
+}
+
+.pantalla-formulario .aviso-oficial {
+  font-size: 0.875rem;
+  font-weight: 600;
+}

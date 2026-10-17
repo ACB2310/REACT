@@ -51,3 +51,49 @@ body {
   background-color: var(--fondo);
   color: var(--texto);
 }
+
+/* Compartido por todas las pantallas (antes en Mapa.css) */
+/* Mensajes de estado: cargando, error, sin conexión */
+.mensaje-estado {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.mensaje-info {
+  background-color: var(--info-fondo);
+  color: var(--info-texto);
+}
+
+.mensaje-aviso {
+  background-color: var(--aviso-fondo);
+  color: var(--aviso-texto);
+}
+
+.mensaje-error {
+  background-color: var(--error-fondo);
+  color: var(--error-texto);
+}
+
+/* Botón grande para tocar con el dedo, aunque haya prisa */
+.boton-reintentar {
+  min-height: 48px;
+  padding: 0 20px;
+  border: none;
+  border-radius: 8px;
+  background-color: var(--primario);
+  color: var(--superficie);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.boton-reintentar:focus-visible {
+  outline: 3px solid var(--texto);
+  outline-offset: 2px;
+}

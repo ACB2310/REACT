@@ -11,10 +11,9 @@ import { useSismos } from '../hooks/useSismos.js'
 import { useCiclones } from '../hooks/useCiclones.js'
 import { useSatelite } from '../hooks/useSatelite.js'
 import { formatearFechaHora } from '../utils/fechas.js'
+import { AVISO_OFICIAL } from '../utils/avisos.js'
 import './Mapa.css'
 
-const AVISO_OFICIAL =
-  'Plataforma informativa. Las indicaciones oficiales de Protección Civil, SMN y SSN tienen prioridad.'
 
 // Mientras no haya datos no hay hora que mostrar
 function horaDe(actualizadoEn) {
