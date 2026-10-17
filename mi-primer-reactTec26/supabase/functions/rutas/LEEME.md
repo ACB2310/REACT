@@ -1,7 +1,9 @@
 # Edge Function `rutas`
 
 Calcula la ruta al refugio abierto al que se llega más rápido (a pie o en carro),
-evitando bloqueos y zonas de peligro, con OpenRouteService. La lógica está en
+evitando bloqueos y zonas de peligro, con OpenRouteService. En carro, si el vehículo no puede
+llegar a ningún refugio, propone la **ruta combinada**: en carro hasta un punto y de ahí a pie
+(etapa 5; usa también las isócronas de ORS). La lógica está en
 `logica.js` (con pruebas en `logica.test.js`); `index.ts` solo conecta Supabase y ORS.
 
 ## Antes de desplegar

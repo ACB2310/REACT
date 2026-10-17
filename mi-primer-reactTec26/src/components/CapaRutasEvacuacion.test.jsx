@@ -61,8 +61,55 @@ describe('CapaRutasEvacuacion', () => {
       ],
     })
     expect(mapa.capas['evacuacion-puntos'].paint['circle-color']).toEqual([
-      'match', ['get', 'rol'], 'origen', '#2563eb', 'destino', '#16a34a', '#6b7280',
+      'match', ['get', 'rol'], 'origen', '#2563eb', 'destino', '#16a34a', 'transbordo', '#f59e0b', '#6b7280',
     ])
+  })
+
+  describe('ruta combinada (dos tramos)', () => {
+    const TRANSBORDO = [-100.305, 25.672]
+    const COMBINADA = {
+      type: 'FeatureCollection',
+      features: [
+        { type: 'Feature', geometry: { type: 'LineString', coordinates: [ORIGEN, TRANSBORDO] }, properties: { modo: 'carro' } },
+        { type: 'Feature', geometry: { type: 'LineString', coordinates: [TRANSBORDO, DESTINO] }, properties: { modo: 'a_pie' } },
+      ],
+    }
+
+    it('dibuja los dos tramos y marca dónde bajarse', () => {
+      const mapa = crearMapa()
+      render(<CapaRutasEvacuacion mapa={mapa} ruta={COMBINADA} origen={ORIGEN} destino={DESTINO} transbordo={TRANSBORDO} />)
+
+      expect(mapa.fuentes['evacuacion-ruta'].definicion.data).toEqual(COMBINADA)
+      expect(mapa.fuentes['evacuacion-puntos'].definicion.data.features.map((f) => f.properties.rol)).toEqual([
+        'origen',
+        'destino',
+        'transbordo',
+      ])
+      // Punto de transbordo en ámbar
+      expect(mapa.capas['evacuacion-puntos'].paint['circle-color']).toEqual([
+        'match', ['get', 'rol'], 'origen', '#2563eb', 'destino', '#16a34a', 'transbordo', '#f59e0b', '#6b7280',
+      ])
+    })
+
+    it('encuadra los dos tramos', () => {
+      const mapa = crearMapa()
+      render(<CapaRutasEvacuacion mapa={mapa} ruta={COMBINADA} origen={ORIGEN} destino={DESTINO} transbordo={TRANSBORDO} />)
+      expect(mapa.fitBounds).toHaveBeenCalledWith(
+        [
+          [-100.3099, 25.6701],
+          [-100.3001, 25.672],
+        ],
+        { padding: 48, maxZoom: 17 },
+      )
+    })
+
+    it('un tramo sin geometría hace que no se dibuje nada', () => {
+      const mapa = crearMapa()
+      const rota = { ...COMBINADA, features: [COMBINADA.features[0], { type: 'Feature', geometry: null, properties: {} }] }
+      render(<CapaRutasEvacuacion mapa={mapa} ruta={rota} origen={ORIGEN} destino={DESTINO} transbordo={TRANSBORDO} />)
+      expect(mapa.fuentes['evacuacion-ruta'].definicion.data).toEqual(VACIA)
+      expect(mapa.fitBounds).not.toHaveBeenCalled()
+    })
   })
 
   it('va encima de las demás capas', () => {
@@ -131,10 +178,11 @@ describe('CapaRutasEvacuacion', () => {
   })
 
   // Para quien no distingue bien los colores: el destino se ve más grande que el origen
+  // y el punto donde bajarse del vehículo, de tamaño intermedio
   it('el punto de reunión se dibuja más grande que la persona', () => {
     const mapa = crearMapa()
     render(<CapaRutasEvacuacion mapa={mapa} ruta={RUTA} origen={ORIGEN} destino={DESTINO} />)
-    expect(mapa.capas['evacuacion-puntos'].paint['circle-radius']).toEqual(['match', ['get', 'rol'], 'destino', 12, 8])
+    expect(mapa.capas['evacuacion-puntos'].paint['circle-radius']).toEqual(['match', ['get', 'rol'], 'destino', 12, 'transbordo', 10, 8])
   })
 
   it('una ruta sin geometría no rompe la pantalla', () => {

@@ -121,6 +121,13 @@ Decisiones de la etapa 4 (2026-10-17), migración 6 + Edge Function `rutas`:
 - El Dijkstra sin conexión también evita las zonas de severidad 1 (2026-10-17), con la misma regla: la zona donde está la persona (de verdad dentro, sin margen) no se evita y se avisa; ningún destino puede quedar dentro de una zona. Sin datos de zonas, el panel lo avisa.
 - Las zonas (igual que los bloqueos) solo viven en memoria: si la app se abre **sin señal**, no hay zonas que evitar y el panel lo avisa. Guardarlas en el teléfono queda para la etapa 7 (PWA offline).
 
+Decisiones de la etapa 5 (2026-10-17), ruta combinada — en la Edge Function `rutas` (`planificarRutaCombinada` en `logica.js`):
+- Solo **en carro**, cuando la ruta normal no llega a ningún refugio (`bloqueada` o `sin-acceso`). A pie nunca.
+- Para los 2 refugios abiertos más cercanos: isócrona **a pie de 15 min** (evitando bloqueos `total` y zonas) → 12 puntos de su borde y 12 a medio camino. Se descartan los que caen en una zona de severidad 1 o a ≤ 25 m de un bloqueo.
+- Orden por `tiempo en carro (matriz) + 120 s para bajar + tiempo a pie (matriz)`; se piden rutas reales para los 3 mejores: carro hasta el punto y, desde donde terminó el carro, a pie al refugio. Cualquier tramo que cruce un obstáculo se descarta; gana el **menor tiempo total**.
+- Respuesta `modo: 'combinada'`: `ruta` es una FeatureCollection de 2 tramos (`properties.modo`), más `transbordo` y `tramos`. En el mapa: carro morado, a pie azul, punto ámbar donde bajarse; el panel da el total, cada tramo y un enlace a mapas por tramo.
+- La función tiene un presupuesto de 13 s (la app espera 15 s). Si la combinada falla por ORS, se responde el "sin ruta" original. Cuota gratuita de ORS: isócronas 500/día, matrices 500/día, rutas 2000/día.
+
 Decisiones de la etapa 6 (2026-10-17), migración 5:
 - **Solo el coordinador crea incidentes** (tocando el mapa o con "Crear incidente" desde el popup de un bloqueo).
 - **Asignación sugerida y confirmada**: `src/utils/asignacion.js` propone la brigada **disponible** más cercana a cada incidente, del más urgente al menos urgente, sin repetir brigadas; el coordinador acepta o cambia. "Más cercana" es **línea recta** hasta que exista la etapa 4 (ORS); entonces se cambia por tiempo de llegada.
@@ -171,7 +178,7 @@ Decisiones de la etapa 3 (2026-10-16):
 2. Capa de huracanes (GDACS + NHC) y capa de satélite (NASA GIBS). ✅
 3. Supabase: tablas de refugios y bloqueos, y pantalla para reportar bloqueos tocando el mapa. ✅ ← siguiente: 4
 4. Ruta al refugio más cercano con OpenRouteService evitando bloqueos y zonas de peligro. ✅
-5. Ruta combinada carro + a pie.
+5. Ruta combinada carro + a pie. ✅
 6. Panel de brigadas: asignación de equipos a incidentes por prioridad. ✅
 7. PWA offline, notificaciones push y app con Capacitor.
 8. Detección automática de zonas inundadas (Copernicus Global Flood Monitoring) y reconocimiento con drones.

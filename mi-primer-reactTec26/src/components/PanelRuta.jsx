@@ -45,6 +45,8 @@ function PanelRuta({ ruta, evacuacion, modo, alCambiarModo, sinDatosBloqueos }) 
   }
 
   const listo = estado === 'listo' && resultado?.estado === 'ruta'
+  // Etapa 5: en carro no se llega al refugio; se va en carro hasta `transbordo` y luego a pie
+  const combinada = listo && resultado.modo === 'combinada'
   const evitados = listo ? textoEvitados(resultado.evitados) : null
 
   return (
@@ -89,10 +91,29 @@ function PanelRuta({ ruta, evacuacion, modo, alCambiarModo, sinDatosBloqueos }) 
 
       {listo && (
         <div className="mensaje-estado mensaje-info" role="status">
-          <p>
-            Refugio {resultado.destino.nombre}: {textoDuracion(resultado.resumen.duracionS)} {MODOS[resultado.modo ?? modo].enTexto} ·{' '}
-            {textoMetros(resultado.resumen.distanciaM)}
-          </p>
+          {combinada ? (
+            <>
+              <p>
+                Refugio {resultado.destino.nombre}: {textoDuracion(resultado.resumen.duracionS)} en total ·{' '}
+                {textoMetros(resultado.resumen.distanciaM)}
+              </p>
+              <p>El carro no puede llegar hasta el refugio: bájate en el punto amarillo y sigue a pie.</p>
+              <p>
+                En carro (línea morada): {textoDuracion(resultado.tramos.carro.duracionS)} ·{' '}
+                {textoMetros(resultado.tramos.carro.distanciaM)}
+              </p>
+              <p>Bajar del vehículo: {textoDuracion(resultado.tramos.descensoS)}</p>
+              <p>
+                A pie (línea azul): {textoDuracion(resultado.tramos.aPie.duracionS)} ·{' '}
+                {textoMetros(resultado.tramos.aPie.distanciaM)}
+              </p>
+            </>
+          ) : (
+            <p>
+              Refugio {resultado.destino.nombre}: {textoDuracion(resultado.resumen.duracionS)} {MODOS[resultado.modo ?? modo].enTexto} ·{' '}
+              {textoMetros(resultado.resumen.distanciaM)}
+            </p>
+          )}
           {evitados && <p>{evitados}</p>}
           {resultado.resumen.pasos.length > 0 && (
             <details className="pasos-ruta">
@@ -107,7 +128,27 @@ function PanelRuta({ ruta, evacuacion, modo, alCambiarModo, sinDatosBloqueos }) 
               </ol>
             </details>
           )}
-          {origen && (
+          {origen && combinada && (
+            <>
+              <a
+                className="enlace-mapas"
+                href={enlaceRutaEnMapas(origen, resultado.transbordo, 'carro')}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Abrir tramo en carro
+              </a>
+              <a
+                className="enlace-mapas"
+                href={enlaceRutaEnMapas(resultado.transbordo, resultado.destino.posicion, 'a_pie')}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Abrir tramo a pie
+              </a>
+            </>
+          )}
+          {origen && !combinada && (
             <a
               className="enlace-mapas"
               href={enlaceRutaEnMapas(origen, resultado.destino.posicion, resultado.modo ?? modo)}

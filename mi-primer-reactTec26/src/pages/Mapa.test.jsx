@@ -584,6 +584,41 @@ describe('Página Mapa', () => {
       render(<Mapa />, { wrapper: MemoryRouter })
       expect(capas.ruta).toMatchObject({ ruta: rutaOrs, origen: [-100.31, 25.67], destino: [-100.30, 25.68] })
       expect(screen.getByText('Refugio Escuela: 20 min a pie · 1.5 km')).toBeInTheDocument()
+      expect(capas.ruta.transbordo).toBeNull()
+    })
+
+    it('con ruta combinada pasa los dos tramos y dónde bajarse', () => {
+      conRuta()
+      const TRANSBORDO = [-100.305, 25.675]
+      const dosTramos = {
+        type: 'FeatureCollection',
+        features: [
+          { type: 'Feature', geometry: { type: 'LineString', coordinates: [[-100.31, 25.67], TRANSBORDO] }, properties: { modo: 'carro' } },
+          { type: 'Feature', geometry: { type: 'LineString', coordinates: [TRANSBORDO, [-100.30, 25.68]] }, properties: { modo: 'a_pie' } },
+        ],
+      }
+      simularRutaRefugio({
+        estado: 'listo',
+        origen: [-100.31, 25.67],
+        resultado: {
+          estado: 'ruta',
+          modo: 'combinada',
+          destino: { nombre: 'Escuela', posicion: [-100.30, 25.68] },
+          ruta: dosTramos,
+          transbordo: TRANSBORDO,
+          tramos: {
+            carro: { distanciaM: 900, duracionS: 120, pasos: [] },
+            aPie: { distanciaM: 600, duracionS: 480, pasos: [] },
+            descensoS: 120,
+          },
+          resumen: { distanciaM: 1500, duracionS: 720, pasos: [] },
+          evitados: { bloqueos: 1, zonas: 0 },
+          consultadoEn: 1700000000000,
+        },
+      })
+      render(<Mapa />, { wrapper: MemoryRouter })
+      expect(capas.ruta).toMatchObject({ ruta: dosTramos, origen: [-100.31, 25.67], destino: [-100.30, 25.68], transbordo: TRANSBORDO })
+      expect(screen.getByText('Refugio Escuela: 12 min en total · 1.5 km')).toBeInTheDocument()
     })
 
     it('dibuja las zonas de peligro debajo de bloqueos y ruta', () => {

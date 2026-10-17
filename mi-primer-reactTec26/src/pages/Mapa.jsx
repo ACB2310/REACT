@@ -123,12 +123,19 @@ function Mapa() {
   const rutaRefugio = useRutaRefugio({ modo: modoRuta, evacuacion, asegurarSesion })
   const rutaEnLinea = rutaRefugio.estado === 'listo' ? rutaRefugio.resultado : null
   // En el mapa se dibuja UNA ruta: la en línea, o la del teléfono si se usó el respaldo
+  // (en la ruta combinada, la en línea trae dos tramos y el punto donde bajarse del vehículo)
   const rutaDibujada = rutaEnLinea
-    ? { ruta: rutaEnLinea.ruta, origen: rutaRefugio.origen, destino: rutaEnLinea.destino.posicion }
+    ? {
+        ruta: rutaEnLinea.ruta,
+        origen: rutaRefugio.origen,
+        destino: rutaEnLinea.destino.posicion,
+        transbordo: rutaEnLinea.transbordo ?? null,
+      }
     : {
         ruta: rutaParaMapa,
         origen: resultadoRuta ? evacuacion.origen : null,
         destino: resultadoRuta?.puntoReunion.coordenadas ?? null,
+        transbordo: null,
       }
 
   // Qué capas están prendidas. El satélite empieza apagado para cuidar datos y batería.
@@ -334,6 +341,7 @@ function Mapa() {
           ruta={rutaDibujada.ruta}
           origen={rutaDibujada.origen}
           destino={rutaDibujada.destino}
+          transbordo={rutaDibujada.transbordo}
         />
 
         {/* Capas y leyenda juntas, detrás de un botón para no tapar el mapa */}

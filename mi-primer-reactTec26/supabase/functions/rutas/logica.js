@@ -8,6 +8,7 @@
 // 2. La matriz de ORS los ordena por TIEMPO de llegada (la matriz no acepta zonas a evitar).
 // 3. Para los 3 más rápidos se pide la ruta real evitando bloqueos y zonas.
 // 4. Se descarta cualquier ruta que cruce un obstáculo y gana la de menor tiempo.
+// 5. Etapa 5: si EN CARRO no hay ruta, se busca la ruta combinada (ver planificarRutaCombinada).
 
 export const PERFILES = { a_pie: 'foot-walking', carro: 'driving-car' }
 export const RADIO_BLOQUEO_M = 25
@@ -18,6 +19,16 @@ export const MARGEN_CAJA_KM = 2
 // Límites de OpenRouteService para avoid_polygons (con un poco de margen)
 export const AREA_MAXIMA_KM2 = 190
 export const EXTENSION_MAXIMA_KM = 19.5
+
+// Ruta combinada (etapa 5, decisiones en docs/superpowers/plans/…etapa5…)
+// Hasta dónde se busca dónde bajar del vehículo: lo que se camina en 15 min hasta el refugio
+export const TIEMPO_A_PIE_TRANSBORDO_S = 900
+// Tiempo para estacionarse y bajar del vehículo
+export const TIEMPO_DESCENSO_S = 120
+export const DESTINOS_COMBINADA = 2
+export const PUNTOS_BORDE_TRANSBORDO = 12
+export const COMBINADAS_A_PROBAR = 3
+export const INSTRUCCION_TRANSBORDO = 'Bájate del vehículo aquí y sigue a pie'
 
 const RADIO_TIERRA_KM = 6371.0088
 const KM_POR_GRADO = 111.32
@@ -227,6 +238,8 @@ export function obstaculosParaRuta({ bloqueos = [], zonas = [], modo, origen, de
 
   return {
     avoid: enviados.length > 0 ? { type: 'MultiPolygon', coordinates: enviados.map((o) => [o.anillo]) } : null,
+    // Qué obstáculos se mandaron (para no contar dos veces uno que evitan los dos tramos)
+    idsEvitados: enviados.map((o) => `${o.clase}-${o.id}`),
     evitados: {
       bloqueos: enviados.filter((o) => o.clase === 'bloqueo').length,
       zonas: enviados.filter((o) => o.clase === 'zona').length,
@@ -279,7 +292,23 @@ export class ErrorRutas extends Error {
 // a cada uno de los demás; `pedirRuta(perfil, origen, destino, avoid)` devuelve la
 // Feature de ORS o lanza ErrorRutas('SIN_RUTA'). Se inyectan para poder probar sin red.
 // ---------------------------------------------------------------------------
-export async function planificarRuta({ origen, modo, refugios, bloqueos, zonas, pedirMatriz, pedirRuta }) {
+export async function planificarRuta({ origen, modo, refugios, bloqueos, zonas, pedirMatriz, pedirRuta, pedirIsocrona }) {
+  const directa = await planificarRutaDirecta({ origen, modo, refugios, bloqueos, zonas, pedirMatriz, pedirRuta })
+
+  // Etapa 5: en carro, si el vehículo no llega a ningún refugio, se busca dónde bajarse.
+  // Si la combinada tampoco sale (o falla ORS), se responde el "sin ruta" original.
+  const sinCaminoEnCarro = modo === 'carro' && directa.estado === 'sin-ruta' && directa.motivo !== 'sin-refugios'
+  if (!sinCaminoEnCarro || !pedirIsocrona) return directa
+  try {
+    const combinada = await planificarRutaCombinada({ origen, refugios, bloqueos, zonas, pedirMatriz, pedirRuta, pedirIsocrona })
+    return combinada ?? directa
+  } catch {
+    return directa
+  }
+}
+
+// La ruta normal: un solo tramo, a pie o en carro, al refugio al que se llega más rápido
+async function planificarRutaDirecta({ origen, modo, refugios, bloqueos, zonas, pedirMatriz, pedirRuta }) {
   const perfil = PERFILES[modo]
   if (!perfil) throw new ErrorRutas('MODO_INVALIDO')
 
@@ -329,5 +358,131 @@ export async function planificarRuta({ origen, modo, refugios, bloqueos, zonas, 
     resumen,
     evitados: obstaculos.evitados,
     origenEnZona: obstaculos.origenEnZona !== null,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Ruta combinada (etapa 5): si el vehículo no puede llegar al refugio, ir en carro hasta
+// el punto desde donde se llega más rápido caminando, y de ahí a pie (CLAUDE.md).
+// `pedirIsocrona(perfil, punto, segundos, avoid)` devuelve el GeoJSON Polygon de lo que
+// se alcanza desde `punto` en ese tiempo.
+// ---------------------------------------------------------------------------
+
+// ¿Sirve este punto para bajarse del vehículo? No dentro de una zona de severidad 1 ni a
+// 25 m o menos de un bloqueo (de cualquier tipo: el carro no puede terminar dentro de uno).
+function puntoSeguroParaBajar(punto, bloqueos, zonas) {
+  if (zonasAEvitar(zonas).some((zona) => puntoEnAnillo(punto, zona.anillo))) return false
+  return !bloqueos.some(
+    (b) => Number.isFinite(b.longitud) && Number.isFinite(b.latitud) && distanciaKm(punto, [b.longitud, b.latitud]) * 1000 <= RADIO_BLOQUEO_M,
+  )
+}
+
+// Puntos candidatos para bajarse: algunos del borde de la isócrona a pie del refugio y otros
+// a medio camino entre ese borde y el refugio. ORS los ajusta a la calle más cercana.
+export function puntosDeTransbordo(isocrona, destino, { bloqueos = [], zonas = [] } = {}, cantidad = PUNTOS_BORDE_TRANSBORDO) {
+  const anillo = anilloDeGeojson(isocrona)
+  if (!anillo) return []
+  const vertices = anillo.slice(0, -1)
+  const paso = Math.max(1, vertices.length / cantidad)
+  const puntos = []
+  for (let i = 0; i < vertices.length && puntos.length < cantidad * 2; i += paso) {
+    const borde = vertices[Math.floor(i)]
+    puntos.push(borde, [(borde[0] + destino[0]) / 2, (borde[1] + destino[1]) / 2])
+  }
+  return puntos.filter((punto) => puntoSeguroParaBajar(punto, bloqueos, zonas))
+}
+
+// Candidatos (refugio + punto donde bajarse) con su tiempo estimado por las matrices:
+// tiempo en carro hasta el punto + bajar + tiempo a pie del punto al refugio.
+async function candidatosCombinada(destino, { origen, bloqueos, zonas, pedirMatriz, pedirIsocrona }) {
+  const alrededor = obstaculosParaRuta({ bloqueos, zonas, modo: 'a_pie', origen: destino.posicion, destino: destino.posicion })
+  const isocrona = await pedirIsocrona(PERFILES.a_pie, destino.posicion, TIEMPO_A_PIE_TRANSBORDO_S, alrededor.avoid)
+  const puntos = puntosDeTransbordo(isocrona, destino.posicion, { bloqueos, zonas })
+  if (puntos.length === 0) return []
+  // A pie no hay sentidos únicos: el tiempo del refugio al punto sirve como el del punto al refugio
+  const [enCarro, aPie] = await Promise.all([
+    pedirMatriz(PERFILES.carro, [origen, ...puntos]),
+    pedirMatriz(PERFILES.a_pie, [destino.posicion, ...puntos]),
+  ])
+  return puntos
+    .map((punto, i) => ({ destino, punto, estimadoS: enCarro?.[i] + TIEMPO_DESCENSO_S + aPie?.[i] }))
+    .filter((c) => Number.isFinite(c.estimadoS))
+}
+
+// Ruta real de un candidato: el tramo en carro y, desde donde terminó, el tramo a pie.
+// Se descarta (CRUZA_OBSTACULO) si algún tramo cruza un obstáculo o si el carro termina en
+// un lugar donde no se puede bajar.
+async function rutaCombinadaReal({ destino, punto }, { origen, bloqueos, zonas, pedirRuta }) {
+  const obstaculosCarro = obstaculosParaRuta({ bloqueos, zonas, modo: 'carro', origen, destino: punto })
+  const rutaCarro = await pedirRuta(PERFILES.carro, origen, punto, obstaculosCarro.avoid)
+  const lineaCarro = rutaCarro?.geometry?.coordinates ?? []
+  if (lineaCarro.length < 2 || rutaCruzaObstaculos(lineaCarro, obstaculosCarro.todos)) throw new ErrorRutas('CRUZA_OBSTACULO')
+
+  const transbordo = lineaCarro.at(-1)
+  if (!puntoSeguroParaBajar(transbordo, bloqueos, zonas)) throw new ErrorRutas('CRUZA_OBSTACULO')
+
+  const obstaculosPie = obstaculosParaRuta({ bloqueos, zonas, modo: 'a_pie', origen: transbordo, destino: destino.posicion })
+  const rutaPie = await pedirRuta(PERFILES.a_pie, transbordo, destino.posicion, obstaculosPie.avoid)
+  const lineaPie = rutaPie?.geometry?.coordinates ?? []
+  if (lineaPie.length < 2 || rutaCruzaObstaculos(lineaPie, obstaculosPie.todos)) throw new ErrorRutas('CRUZA_OBSTACULO')
+
+  const carro = resumirRuta(rutaCarro)
+  const aPie = resumirRuta(rutaPie)
+  return { destino, transbordo, rutaCarro, rutaPie, carro, aPie, obstaculosCarro, obstaculosPie, totalS: carro.duracionS + TIEMPO_DESCENSO_S + aPie.duracionS }
+}
+
+// Devuelve la mejor ruta combinada o null si no hay ninguna. Lanza los errores de ORS.
+export async function planificarRutaCombinada({ origen, refugios, bloqueos = [], zonas = [], pedirMatriz, pedirRuta, pedirIsocrona }) {
+  const destinos = refugiosCandidatos(origen, refugios, zonas, DESTINOS_COMBINADA)
+  if (destinos.length === 0) return null
+
+  const porDestino = await Promise.all(
+    destinos.map((destino) => candidatosCombinada(destino, { origen, bloqueos, zonas, pedirMatriz, pedirIsocrona })),
+  )
+  const mejores = porDestino
+    .flat()
+    .sort((a, b) => a.estimadoS - b.estimadoS)
+    .slice(0, COMBINADAS_A_PROBAR)
+  if (mejores.length === 0) return null
+
+  const intentos = await Promise.allSettled(mejores.map((c) => rutaCombinadaReal(c, { origen, bloqueos, zonas, pedirRuta })))
+  const buenas = intentos.filter((i) => i.status === 'fulfilled').map((i) => i.value)
+  if (buenas.length === 0) {
+    const grave = intentos.find((i) => !['SIN_RUTA', 'CRUZA_OBSTACULO'].includes(i.reason?.codigo))
+    if (grave) throw grave.reason
+    return null
+  }
+
+  const mejor = buenas.sort((a, b) => a.totalS - b.totalS)[0]
+  const { destino, transbordo, rutaCarro, rutaPie, carro, aPie, obstaculosCarro, obstaculosPie } = mejor
+  // Un obstáculo que evitan los dos tramos se cuenta una vez
+  const ids = new Set([...obstaculosCarro.idsEvitados, ...obstaculosPie.idsEvitados])
+  const cuantos = (clase) => [...ids].filter((id) => id.startsWith(`${clase}-`)).length
+  return {
+    estado: 'ruta',
+    modo: 'combinada',
+    destino: {
+      id: destino.id,
+      nombre: destino.nombre,
+      direccion: destino.direccion ?? null,
+      municipio: destino.municipio ?? null,
+      posicion: destino.posicion,
+    },
+    ruta: {
+      type: 'FeatureCollection',
+      features: [
+        { type: 'Feature', geometry: rutaCarro.geometry, properties: { modo: 'carro' } },
+        { type: 'Feature', geometry: rutaPie.geometry, properties: { modo: 'a_pie' } },
+      ],
+    },
+    transbordo,
+    tramos: { carro, aPie, descensoS: TIEMPO_DESCENSO_S },
+    resumen: {
+      distanciaM: carro.distanciaM + aPie.distanciaM,
+      duracionS: mejor.totalS,
+      pasos: [...carro.pasos, { instruccion: INSTRUCCION_TRANSBORDO, distanciaM: 0 }, ...aPie.pasos],
+    },
+    evitados: { bloqueos: cuantos('bloqueo'), zonas: cuantos('zona') },
+    origenEnZona: obstaculosCarro.origenEnZona !== null,
   }
 }

@@ -9,6 +9,8 @@
 // Petición:  POST { origen: [longitud, latitud], modo: 'a_pie' | 'carro' }
 //            con la sesión de la persona (también anónima): supabase.functions.invoke('rutas')
 // Respuesta: { estado: 'ruta', destino, ruta, resumen, evitados, origenEnZona, consultadoEn }
+//            En carro, si el vehículo no llega (etapa 5): modo 'combinada', con `ruta` como
+//            FeatureCollection de 2 tramos, `transbordo` y `tramos`.
 //            { estado: 'sin-ruta', motivo, consultadoEn }
 //            o un error { codigo } con su estado HTTP
 
@@ -16,8 +18,11 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { ErrorRutas, PERFILES, codigoErrorOrs, planificarRuta } from './logica.js'
 
 const ORS = 'https://api.openrouteservice.org'
-// Matriz + rutas (en paralelo) deben terminar antes de los 15 s que espera la app
+// Tiempo máximo de UNA petición a ORS
 const TIEMPO_LIMITE_MS = 6000
+// Todo (ruta normal y, si hace falta, la combinada) debe terminar antes de los 15 s que
+// espera la app: cada petición usa como máximo lo que queda de este presupuesto
+const PRESUPUESTO_MS = 13000
 // Misma caja que dentro_de_mexico() en SQL: [oeste, sur, este, norte]
 const CAJA_MEXICO = [-118.6, 14.3, -86.5, 32.8]
 
@@ -51,9 +56,12 @@ function responderError(codigo) {
 }
 
 // Petición a ORS con tiempo límite. Los errores de ORS se convierten en códigos de la app.
-async function pedirOrs(ruta, cuerpo) {
+// `terminaEn`: hora (ms) en que se acaba el presupuesto de esta consulta.
+async function pedirOrs(ruta, cuerpo, terminaEn) {
   const llave = Deno.env.get('ORS_API_KEY')
   if (!llave) throw new ErrorRutas('ORS_LLAVE')
+  const queda = Math.min(TIEMPO_LIMITE_MS, terminaEn - Date.now())
+  if (queda < 500) throw new ErrorRutas('ORS_ERROR')
   let respuesta
   try {
     respuesta = await fetch(`${ORS}${ruta}`, {
@@ -64,7 +72,7 @@ async function pedirOrs(ruta, cuerpo) {
         Accept: 'application/json, application/geo+json',
       },
       body: JSON.stringify(cuerpo),
-      signal: AbortSignal.timeout(TIEMPO_LIMITE_MS),
+      signal: AbortSignal.timeout(queda),
     })
   } catch {
     throw new ErrorRutas('ORS_ERROR')
@@ -74,25 +82,40 @@ async function pedirOrs(ruta, cuerpo) {
   return datos
 }
 
-// Tiempos (s) desde puntos[0] a cada uno de los demás. La matriz no acepta zonas a evitar.
-async function pedirMatriz(perfil, puntos) {
-  const datos = await pedirOrs(`/v2/matrix/${perfil}`, {
-    locations: puntos,
-    sources: [0],
-    destinations: puntos.slice(1).map((_, i) => i + 1),
-    metrics: ['duration'],
-  })
-  return datos?.durations?.[0] ?? []
-}
+// Las tres consultas a ORS que usa logica.js, con el presupuesto de tiempo de ESTA petición
+function crearPedidosOrs(terminaEn) {
+  // Tiempos (s) desde puntos[0] a cada uno de los demás. La matriz no acepta zonas a evitar.
+  async function pedirMatriz(perfil, puntos) {
+    const datos = await pedirOrs(`/v2/matrix/${perfil}`, {
+      locations: puntos,
+      sources: [0],
+      destinations: puntos.slice(1).map((_, i) => i + 1),
+      metrics: ['duration'],
+    }, terminaEn)
+    return datos?.durations?.[0] ?? []
+  }
 
-// Ruta real de origen a destino evitando `avoid` (MultiPolygon o null), con instrucciones en español
-async function pedirRuta(perfil, origen, destino, avoid) {
-  const cuerpo = { coordinates: [origen, destino], language: 'es', instructions: true }
-  if (avoid) cuerpo.options = { avoid_polygons: avoid }
-  const datos = await pedirOrs(`/v2/directions/${perfil}/geojson`, cuerpo)
-  const ruta = datos?.features?.[0]
-  if (!ruta) throw new ErrorRutas('SIN_RUTA')
-  return ruta
+  // Ruta real de origen a destino evitando `avoid` (MultiPolygon o null), con instrucciones en español
+  async function pedirRuta(perfil, origen, destino, avoid) {
+    const cuerpo = { coordinates: [origen, destino], language: 'es', instructions: true }
+    if (avoid) cuerpo.options = { avoid_polygons: avoid }
+    const datos = await pedirOrs(`/v2/directions/${perfil}/geojson`, cuerpo, terminaEn)
+    const ruta = datos?.features?.[0]
+    if (!ruta) throw new ErrorRutas('SIN_RUTA')
+    return ruta
+  }
+
+  // Área que se alcanza desde `punto` en `segundos` (GeoJSON Polygon), evitando `avoid`
+  async function pedirIsocrona(perfil, punto, segundos, avoid) {
+    const cuerpo = { locations: [punto], range: [segundos], range_type: 'time' }
+    if (avoid) cuerpo.options = { avoid_polygons: avoid }
+    const datos = await pedirOrs(`/v2/isochrones/${perfil}`, cuerpo, terminaEn)
+    const forma = datos?.features?.[0]?.geometry
+    if (forma?.type !== 'Polygon') throw new ErrorRutas('SIN_RUTA')
+    return forma
+  }
+
+  return { pedirMatriz, pedirRuta, pedirIsocrona }
 }
 
 function origenValido(origen) {
@@ -122,6 +145,7 @@ Deno.serve(async (peticion) => {
     auth: { persistSession: false },
   })
 
+  const terminaEn = Date.now() + PRESUPUESTO_MS
   try {
     // Sesión obligatoria (también anónima): así se puede limitar el uso por persona
     const { data: usuario, error: errorUsuario } = await supabase.auth.getUser()
@@ -148,8 +172,7 @@ Deno.serve(async (peticion) => {
       refugios: refugios.data ?? [],
       bloqueos: bloqueos.data ?? [],
       zonas: zonas.data ?? [],
-      pedirMatriz,
-      pedirRuta,
+      ...crearPedidosOrs(terminaEn),
     })
     return responder({ ...resultado, consultadoEn: new Date().toISOString() })
   } catch (error) {

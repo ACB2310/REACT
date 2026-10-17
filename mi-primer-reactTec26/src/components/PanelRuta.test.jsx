@@ -69,6 +69,63 @@ describe('PanelRuta', () => {
     expect(screen.getByRole('button', { name: 'Quitar ruta' })).toBeInTheDocument()
   })
 
+  describe('ruta combinada (el carro no llega al refugio)', () => {
+    const TRANSBORDO = [-103.342, 20.678]
+    const COMBINADA = {
+      ...RESULTADO,
+      modo: 'combinada',
+      ruta: {
+        type: 'FeatureCollection',
+        features: [
+          { type: 'Feature', geometry: { type: 'LineString', coordinates: [ORIGEN, TRANSBORDO] }, properties: { modo: 'carro' } },
+          { type: 'Feature', geometry: { type: 'LineString', coordinates: [TRANSBORDO, [-103.34, 20.68]] }, properties: { modo: 'a_pie' } },
+        ],
+      },
+      transbordo: TRANSBORDO,
+      tramos: {
+        carro: { distanciaM: 3900, duracionS: 540, pasos: [] },
+        aPie: { distanciaM: 420, duracionS: 360, pasos: [] },
+        descensoS: 120,
+      },
+      resumen: {
+        distanciaM: 4320,
+        duracionS: 1020,
+        pasos: [
+          { instruccion: 'Sigue por Av. Juárez', distanciaM: 3900 },
+          { instruccion: 'Bájate del vehículo aquí y sigue a pie', distanciaM: 0 },
+          { instruccion: 'Camina al norte', distanciaM: 420 },
+        ],
+      },
+    }
+    const mostrarCombinada = () =>
+      mostrar({ ruta: ruta({ estado: 'listo', resultado: COMBINADA, origen: ORIGEN }), modo: 'carro' })
+
+    it('dice el total, que el carro no llega y cada tramo', () => {
+      mostrarCombinada()
+      expect(screen.getByText('Refugio Escuela Juárez: 17 min en total · 4.3 km')).toBeInTheDocument()
+      expect(
+        screen.getByText('El carro no puede llegar hasta el refugio: bájate en el punto amarillo y sigue a pie.'),
+      ).toBeInTheDocument()
+      expect(screen.getByText('En carro (línea morada): 9 min · 3.9 km')).toBeInTheDocument()
+      expect(screen.getByText('Bajar del vehículo: 2 min')).toBeInTheDocument()
+      expect(screen.getByText('A pie (línea azul): 6 min · 420 m')).toBeInTheDocument()
+      expect(screen.getByText('Bájate del vehículo aquí y sigue a pie')).toBeInTheDocument()
+    })
+
+    it('un enlace para cada tramo en la app de mapas', () => {
+      mostrarCombinada()
+      expect(screen.getByRole('link', { name: 'Abrir tramo en carro' })).toHaveAttribute(
+        'href',
+        enlaceRutaEnMapas(ORIGEN, TRANSBORDO, 'carro'),
+      )
+      expect(screen.getByRole('link', { name: 'Abrir tramo a pie' })).toHaveAttribute(
+        'href',
+        enlaceRutaEnMapas(TRANSBORDO, [-103.34, 20.68], 'a_pie'),
+      )
+      expect(screen.queryByRole('link', { name: 'Abrir en mapas' })).toBeNull()
+    })
+  })
+
   it('avisa si la persona está dentro de una zona de peligro', () => {
     mostrar({ ruta: ruta({ estado: 'listo', resultado: { ...RESULTADO, origenEnZona: true }, origen: ORIGEN }) })
     expect(screen.getByRole('alert')).toHaveTextContent('Estás dentro de una zona de peligro')
