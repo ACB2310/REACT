@@ -2,11 +2,24 @@ import { useState } from 'react'
 import { useInstalacionPwa } from '../hooks/useInstalacionPwa.js'
 import './BotonInstalarApp.css'
 
+// Si la persona tocó "Ahora no", no se le vuelve a mostrar el aviso en este teléfono
+const CLAVE_AVISO_CERRADO = 'aviso-instalar-cerrado'
+
+function leerAvisoCerrado() {
+  try {
+    return localStorage.getItem(CLAVE_AVISO_CERRADO) === 'si'
+  } catch {
+    return false
+  }
+}
+
+// Aviso para instalar la app en el celular (en computadora no se muestra: ver el CSS)
 function BotonInstalarApp() {
   const { sePuedeInstalar, instalando, instalada, instalar } = useInstalacionPwa()
   const [mostrarAyuda, setMostrarAyuda] = useState(false)
+  const [cerrado, setCerrado] = useState(leerAvisoCerrado)
 
-  if (instalada) return null
+  if (instalada || cerrado) return null
 
   async function alInstalar() {
     if (sePuedeInstalar) {
@@ -16,6 +29,15 @@ function BotonInstalarApp() {
     setMostrarAyuda(true)
   }
 
+  function alCerrar() {
+    setCerrado(true)
+    try {
+      localStorage.setItem(CLAVE_AVISO_CERRADO, 'si')
+    } catch {
+      // Sin almacenamiento el aviso se cierra igual; volverá a salir la próxima vez
+    }
+  }
+
   return (
     <aside className="aviso-instalacion" aria-label="Instalar aplicación" role="status">
       <div>
@@ -23,12 +45,17 @@ function BotonInstalarApp() {
         <p>
           {mostrarAyuda
             ? 'Abre el menú del navegador y elige “Instalar Alerta México”.'
-            : 'Instala la app para abrir el mapa más rápido.'}
+            : 'Instálala para abrir el mapa más rápido, también sin señal.'}
         </p>
       </div>
-      <button type="button" className="boton-instalar" onClick={alInstalar} disabled={instalando}>
-        {instalando ? 'Abriendo instalación…' : 'Instalar app'}
-      </button>
+      <div className="aviso-instalacion-botones">
+        <button type="button" className="boton-instalar" onClick={alInstalar} disabled={instalando}>
+          {instalando ? 'Abriendo instalación…' : 'Instalar app'}
+        </button>
+        <button type="button" className="boton-ahora-no" onClick={alCerrar}>
+          Ahora no
+        </button>
+      </div>
     </aside>
   )
 }

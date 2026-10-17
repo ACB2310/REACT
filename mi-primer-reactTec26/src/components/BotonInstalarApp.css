@@ -33,6 +33,36 @@
   cursor: pointer;
 }
 
+.aviso-instalacion-botones {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.boton-ahora-no {
+  min-height: 44px;
+  padding: 0 12px;
+  border: none;
+  background: none;
+  color: var(--texto-suave);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.boton-ahora-no:focus-visible {
+  outline: 3px solid var(--texto);
+  outline-offset: 2px;
+}
+
+/* En computadora no se muestra: el diseño de escritorio se queda como está */
+@media (min-width: 900px) {
+  .aviso-instalacion {
+    display: none;
+  }
+}
+
 .boton-instalar:disabled {
   cursor: wait;
   opacity: 0.7;
@@ -49,6 +79,6 @@
   }
 
   .boton-instalar {
-    width: 100%;
+    flex: 1;
   }
 }

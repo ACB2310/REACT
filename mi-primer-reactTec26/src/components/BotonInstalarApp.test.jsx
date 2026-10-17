@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import BotonInstalarApp from './BotonInstalarApp.jsx'
 
 function eventoInstalacion() {
@@ -10,6 +10,31 @@ function eventoInstalacion() {
 }
 
 describe('BotonInstalarApp', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  // El aviso no debe quedarse siempre encima de la barra: la persona lo puede cerrar
+  it('"Ahora no" cierra el aviso y se recuerda al volver a abrir la app', () => {
+    const { unmount } = render(<BotonInstalarApp />)
+    fireEvent.click(screen.getByRole('button', { name: 'Ahora no' }))
+    expect(screen.queryByRole('button', { name: 'Instalar app' })).toBeNull()
+
+    unmount()
+    render(<BotonInstalarApp />)
+    expect(screen.queryByRole('button', { name: 'Instalar app' })).toBeNull()
+  })
+
+  it('si el almacenamiento está bloqueado, "Ahora no" igual cierra el aviso', () => {
+    const guardar = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('bloqueado')
+    })
+    render(<BotonInstalarApp />)
+    fireEvent.click(screen.getByRole('button', { name: 'Ahora no' }))
+    expect(screen.queryByRole('button', { name: 'Instalar app' })).toBeNull()
+    guardar.mockRestore()
+  })
+
   it('muestra cómo instalar aunque el navegador todavía no abra el diálogo', () => {
     render(<BotonInstalarApp />)
     fireEvent.click(screen.getByRole('button', { name: 'Instalar app' }))
