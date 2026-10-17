@@ -152,7 +152,8 @@ describe('useZonasPeligro', () => {
     suscribirseAZonas.mockReturnValue(() => {})
     const { result } = renderHook(() => useZonasPeligro())
     await act(async () => {})
-    expect(result.current.zonas).toBe(zonas)
+    // Se entrega una copia sin las zonas vencidas (etapa 7), con el mismo contenido
+    expect(result.current.zonas).toEqual(zonas)
     expect(suscribirseAZonas).toHaveBeenCalled()
   })
 })
