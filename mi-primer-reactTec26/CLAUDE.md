@@ -119,7 +119,7 @@ Decisiones de la etapa 4 (2026-10-17), migración 6 + Edge Function `rutas`:
 - `ORS_API_KEY` es un secreto de Supabase; nunca en `src/` ni en `VITE_*`. La función se despliega desde el panel (ver `supabase/functions/rutas/LEEME.md`) y hay que volver a desplegarla cuando cambie.
 - Zonas de peligro: las dibuja el coordinador en `/zonas` (enlace desde el panel de Brigadas; la barra ya tiene 5 botones). Todos las ven en el mapa (capa "Zonas").
 - El Dijkstra sin conexión también evita las zonas de severidad 1 (2026-10-17), con la misma regla: la zona donde está la persona (de verdad dentro, sin margen) no se evita y se avisa; ningún destino puede quedar dentro de una zona. Sin datos de zonas, el panel lo avisa.
-- Las zonas (igual que los bloqueos) solo viven en memoria: si la app se abre **sin señal**, no hay zonas que evitar y el panel lo avisa. Guardarlas en el teléfono queda para la etapa 7 (PWA offline).
+- Desde la etapa 7, zonas y bloqueos se guardan en el teléfono (ver "PWA sin conexión"); sin ninguna copia, el panel avisa que la ruta no los toma en cuenta.
 
 Decisiones de la etapa 5 (2026-10-17), ruta combinada — en la Edge Function `rutas` (`planificarRutaCombinada` en `logica.js`):
 - Solo **en carro**, cuando la ruta normal no llega a ningún refugio (`bloqueada` o `sin-acceso`). A pie nunca.
@@ -169,6 +169,15 @@ Decisiones de la etapa 3 (2026-10-16):
 - Sin datos de USGS el riesgo sísmico es **desconocido**: el panel lo dice y la línea va gris. Con precisión de GPS peor que 200 m no se calcula.
 - Código: `src/utils/dijkstraEvacuacion.js`, `riesgoSismico.js`, `grafoOsm.js`, `almacenZona.js`, `src/services/overpass.js`, `ubicacion.js`, `src/hooks/useRutaEvacuacion.js`, `src/components/PanelEvacuacion.jsx`, `CapaRutasEvacuacion.jsx`.
 
+## PWA sin conexión (etapa 7, 2026-10-17)
+
+- `vite-plugin-pwa` (rama `etapa-7` del compañero): manifiesto "Alerta México", iconos y aviso para instalar (`BotonInstalarApp`), que **solo sale en el celular** y se cierra con ✕ ("Ahora no", se recuerda). En desarrollo el service worker está apagado (`devOptions.enabled: false`).
+- **Qué guarda el service worker** (`pwa.config.js`, con pruebas): toda la app (incluido el worker `.mjs` de MapLibre) y el mapa ya visto de OpenFreeMap (teselas, letras e íconos hasta 3000 por 14 días; estilo y TileJSON se revisan en segundo plano). Workbox copia cada `urlPattern` **como texto**: no pueden usar constantes ni funciones de afuera.
+- **Datos guardados** (`useDatosPeriodicos(..., { guardarComo })`): la última respuesta buena de sismos, ciclones (NHC y GDACS), refugios, bloqueos y zonas, en `localStorage` (`datos:v1:<nombre>`), hasta 7 días. Al abrir sin señal se muestran con `desdeAlmacen: true` y el aviso dice de cuándo es el dato más antiguo. Bloqueos y zonas vencidos se quitan cada minuto. **Nunca** se guardan incidentes ni brigadas.
+- Las pantallas secundarias se cargan al abrirlas (`React.lazy`); el service worker también las guarda.
+- Diseño: la computadora no cambia; los arreglos del celular van en `@media (max-width: 899px)`.
+- Probado de verdad: versión compilada + Chrome sin red → abre con mapa y datos guardados.
+
 ## Interfaz
 
 - Diseño **móvil primero**: la mayoría de los usuarios estarán en el celular, con prisa y posiblemente con poca batería y señal.
@@ -185,7 +194,7 @@ Decisiones de la etapa 3 (2026-10-16):
 4. Ruta al refugio más cercano con OpenRouteService evitando bloqueos y zonas de peligro. ✅
 5. Ruta combinada carro + a pie. ✅
 6. Panel de brigadas: asignación de equipos a incidentes por prioridad. ✅
-7. PWA offline, notificaciones push y app con Capacitor.
+7. PWA offline ✅ (sin conexión e instalación); falta: notificaciones push y app con Capacitor.
 8. Detección automática de zonas inundadas (Copernicus Global Flood Monitoring) y reconocimiento con drones.
 
 ## Cómo trabajar en este repo
