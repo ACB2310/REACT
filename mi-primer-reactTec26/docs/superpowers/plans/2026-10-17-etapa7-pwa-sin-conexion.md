@@ -17,12 +17,15 @@ iconos y `BotonInstalarApp` + `useInstalacionPwa`. Se juntó con `main` el 2026-
   respuesta buena `{ datos, actualizadoEn, consultadoEn }` y la usa al abrir si todavía no llega nada.
   Solo datos públicos: sismos, ciclones (NHC y GDACS), refugios, bloqueos y zonas. **Nunca** incidentes
   ni brigadas (datos sensibles). Si no cabe o el almacenamiento está bloqueado, la app sigue igual.
-  Las copias de más de 7 días no se usan. Bloqueos y zonas vencidos se descartan por `expiraEn`.
-  La ruta sin conexión (Dijkstra) usa esas copias.
+  Las copias de más de 7 días no se usan. Zonas vencidas se descartan por `expiraEn`; los bloqueos
+  de la copia que parecen vencidos siguen contando hasta que lleguen datos nuevos (pudieron
+  renovarse). La copia de bloqueos no guarda `esMio`. La ruta sin conexión (Dijkstra) usa esas
+  copias y el panel avisa cuáles y de cuándo son.
 - **Mapa guardado:** Workbox guarda estilo, teselas, letras e íconos de `tiles.openfreemap.org`
-  (StaleWhileRevalidate para el estilo, CacheFirst para teselas: máx. 3000, 14 días).
-- **Carga más rápida:** las pantallas secundarias se cargan al abrirlas (`React.lazy`); el service
-  worker las guarda igual para usarlas sin conexión.
+  (NetworkFirst con 3 s para estilo y TileJSON; CacheFirst para teselas: máx. 3000; sin
+  vencimiento por tiempo, para que el mapa sirva aunque la app se abriera hace meses).
+- **Carga más rápida (descartada):** `React.lazy` en las pantallas secundarias se probó y se
+  revirtió (`681fccc`); todo va en el paquete principal.
 - **Celular (< 900 px):** créditos del mapa compactos (botón ⓘ), botones flotantes sin tapar los
   créditos, panel de ruta con altura máxima y desplazamiento, botón "Usar mi ubicación" sin tapar.
 
@@ -32,6 +35,6 @@ iconos y `BotonInstalarApp` + `useInstalacionPwa`. Se juntó con `main` el 2026-
 2. Aviso de instalar: solo celular y "Ahora no" (pruebas).
 3. `guardarComo` en `useDatosPeriodicos` y en los hooks públicos; zonas vencidas fuera (pruebas).
 4. Workbox: caché del mapa y tamaño máximo de precache.
-5. `React.lazy` en las pantallas secundarias.
+5. ~~`React.lazy` en las pantallas secundarias~~ (revertido en `681fccc`).
 6. Diseño en celular (capturas antes/después en 412×915 y 1366×768).
 7. CLAUDE.md, lint, build y revisión independiente (los bloqueos guardados alimentan la ruta).
