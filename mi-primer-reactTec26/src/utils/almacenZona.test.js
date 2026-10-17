@@ -49,6 +49,43 @@ describe('almacenZona', () => {
     expect(leerZona(CENTRO, AHORA)).toBeNull()
   })
 
+  it('si la hora actual no es válida no usa la zona', () => {
+    guardarZona(zona)
+    expect(leerZona(CENTRO, NaN)).toBeNull()
+    expect(leerZona(CENTRO, undefined)).toBeNull()
+  })
+
+  it('ignora una zona que dice venir de más de un día en el futuro', () => {
+    guardarZona({ ...zona, descargadoEn: AHORA + 2 * DIA_MS })
+    expect(leerZona(CENTRO, AHORA)).toBeNull()
+  })
+
+  it('tolera un reloj un poco atrasado (zona de unas horas "en el futuro")', () => {
+    guardarZona({ ...zona, descargadoEn: AHORA + 3 * 3600000 })
+    expect(leerZona(CENTRO, AHORA)).not.toBeNull()
+  })
+
+  it('ignora una zona con el grafo dañado', () => {
+    const danada = (grafo, puntosReunion = zona.puntosReunion) =>
+      JSON.stringify({ centro: CENTRO, descargadoEn: AHORA, grafo, puntosReunion })
+    const casos = [
+      // nodos como lista en lugar de objeto
+      danada({ nodos: [], aristas: [] }),
+      // nodo sin coordenadas
+      danada({ nodos: { ...grafoMonterrey.nodos, m9: { id: 'm9' } }, aristas: grafoMonterrey.aristas }),
+      // calle hacia un nodo que no existe
+      danada({ nodos: grafoMonterrey.nodos, aristas: [...grafoMonterrey.aristas, { id: 'x', desde: 'm1', hasta: 'm99' }] }),
+      // punto de reunión pegado a un nodo que no existe
+      danada(grafoMonterrey, [{ id: 'reunion-1', nombre: 'Plaza', coordenadas: [-100.3, 25.67], nodoId: 'm99' }]),
+      // punto de reunión sin coordenadas
+      danada(grafoMonterrey, [{ id: 'reunion-1', nombre: 'Plaza', nodoId: 'm4' }]),
+    ]
+    for (const texto of casos) {
+      localStorage.setItem(CLAVE_ZONA, texto)
+      expect(leerZona(CENTRO, AHORA)).toBeNull()
+    }
+  })
+
   it('sin zona guardada da null', () => {
     expect(leerZona(CENTRO, AHORA)).toBeNull()
   })

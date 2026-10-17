@@ -17,16 +17,23 @@ function esCoordenada(valor) {
   return Array.isArray(valor) && Number.isFinite(valor[0]) && Number.isFinite(valor[1])
 }
 
-// ¿Lo leído tiene la forma de una zona? Si no, se ignora en lugar de romper la app
+// Tolerancia por si el reloj del teléfono va un poco atrasado respecto a cuando se descargó
+const TOLERANCIA_RELOJ_MS = 24 * 3600000
+
+// ¿Lo leído es una zona completa y sin daños? Si no, se ignora en lugar de calcular
+// una ruta sobre una red de calles rota.
 function tieneFormaDeZona(zona) {
-  return (
-    esCoordenada(zona?.centro) &&
-    Number.isFinite(zona.descargadoEn) &&
-    typeof zona.grafo?.nodos === 'object' &&
-    zona.grafo.nodos !== null &&
-    Array.isArray(zona.grafo.aristas) &&
-    Array.isArray(zona.puntosReunion)
-  )
+  if (!esCoordenada(zona?.centro) || !Number.isFinite(zona.descargadoEn)) return false
+  const nodos = zona.grafo?.nodos
+  if (typeof nodos !== 'object' || nodos === null || Array.isArray(nodos)) return false
+  if (!Array.isArray(zona.grafo.aristas) || !Array.isArray(zona.puntosReunion)) return false
+
+  // Cada nodo con coordenadas numéricas
+  if (!Object.values(nodos).every((nodo) => esCoordenada(nodo?.coordenadas))) return false
+  // Cada calle une dos nodos que existen
+  if (!zona.grafo.aristas.every((a) => nodos[a?.desde] && nodos[a?.hasta])) return false
+  // Cada punto de reunión tiene coordenadas y está pegado a un nodo que existe
+  return zona.puntosReunion.every((p) => esCoordenada(p?.coordenadas) && nodos[p?.nodoId])
 }
 
 // Guarda la zona. Devuelve true si se pudo y false si no (almacenamiento lleno, bloqueado o datos inválidos).
@@ -54,6 +61,9 @@ export function leerZona(centroActual, ahoraMs) {
   }
   if (!tieneFormaDeZona(zona) || !esCoordenada(centroActual)) return null
   if (distanciaMetros(zona.centro, centroActual) > DISTANCIA_MAXIMA_M) return null
-  if (ahoraMs - zona.descargadoEn > EDAD_MAXIMA_MS) return null
+  // Sin hora actual válida no se puede saber qué tan vieja es: no se usa
+  if (!Number.isFinite(ahoraMs)) return null
+  const edad = ahoraMs - zona.descargadoEn
+  if (edad > EDAD_MAXIMA_MS || edad < -TOLERANCIA_RELOJ_MS) return null
   return zona
 }
