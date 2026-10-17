@@ -38,3 +38,12 @@ ERROR: RESULTADO: 34 de 34 casos OK
 Para que un brigadista use la pantalla **Mi brigada**, primero dale el rol `brigadista` (arriba)
 y luego el coordinador lo mete a una brigada en la pantalla **Brigadas y miembros**.
 
+## Verificar zonas de peligro y límite de rutas (etapa 4)
+
+Después de aplicar `20261017000006_zonas_y_rutas.sql`, pega `verificar_zonas.sql` en el SQL Editor
+(si pregunta por RLS, elige **Run without RLS**). Debe terminar con:
+
+```
+ERROR: RESULTADO: 20 de 20 casos OK
+```
+
