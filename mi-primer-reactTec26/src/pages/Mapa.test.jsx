@@ -8,7 +8,9 @@ import { useSatelite } from '../hooks/useSatelite.js'
 import { useRefugios } from '../hooks/useRefugios.js'
 import { useBloqueos } from '../hooks/useBloqueos.js'
 import { useSesion } from '../hooks/useSesion.js'
+import { useIncidentes } from '../hooks/useBrigadas.js'
 import { useRutaEvacuacion } from '../hooks/useRutaEvacuacion.js'
+import { useRutaRefugio } from '../hooks/useRutaRefugio.js'
 import { simularSupabaseListo } from '../test/simularSupabase.js'
 import { renovarBloqueo, eliminarBloqueo } from '../services/bloqueos.js'
 import { sismosEjemplo } from '../mocks/sismosEjemplo.js'
@@ -25,6 +27,10 @@ vi.mock('../hooks/useSesion.js', () => ({ useSesion: vi.fn() }))
 vi.mock('../services/bloqueos.js', () => ({ renovarBloqueo: vi.fn(), eliminarBloqueo: vi.fn(), confirmarBloqueo: vi.fn() }))
 // La ruta de evacuación se simula: sus reglas se prueban en useRutaEvacuacion.test.js
 vi.mock('../hooks/useRutaEvacuacion.js', () => ({ useRutaEvacuacion: vi.fn() }))
+// La ruta en línea (etapa 4) también se simula: sus reglas están en useRutaRefugio.test.js
+vi.mock('../hooks/useRutaRefugio.js', () => ({ useRutaRefugio: vi.fn() }))
+vi.mock('../hooks/useZonasPeligro.js', () => ({ useZonasPeligro: vi.fn(() => ({ zonas: null, estado: 'listo' })) }))
+vi.mock('../components/CapaZonasPeligro.jsx', () => ({ default: (props) => ((capas.zonas = props), null) }))
 // MapLibre necesita WebGL; aquí solo se prueba lo que muestra la página alrededor del mapa
 // El MapaBase falso guarda sus props para poder simular que el mapa base falla
 const { mapaBase, capas, ordenRender } = vi.hoisted(() => ({
@@ -53,6 +59,10 @@ vi.mock('../components/CapaRefugios.jsx', () => ({ default: (props) => ((capas.r
 vi.mock('../components/CapaBloqueos.jsx', () => ({
   default: (props) => ((capas.bloqueos = props), ordenRender.push('bloqueos'), null),
 }))
+vi.mock('../components/CapaIncidentes.jsx', () => ({ default: (props) => ((capas.incidentes = props), null) }))
+vi.mock('../hooks/useBrigadas.js', () => ({
+  useIncidentes: vi.fn(() => ({ incidentes: null, estado: 'listo', recargar: () => {} })),
+}))
 vi.mock('../components/CapaRutasEvacuacion.jsx', () => ({
   default: (props) => ((capas.ruta = props), ordenRender.push('ruta'), null),
 }))
@@ -77,6 +87,20 @@ function estadoFuente(valores = {}) {
     recargar: vi.fn(),
     ...valores,
   }
+}
+
+function simularRutaRefugio(valores = {}) {
+  useRutaRefugio.mockReturnValue({
+    estado: 'inactivo',
+    resultado: null,
+    origen: null,
+    error: null,
+    aviso: null,
+    fuente: null,
+    buscar: vi.fn(),
+    limpiar: vi.fn(),
+    ...valores,
+  })
 }
 
 function simularSismos(valores = {}) {
@@ -160,6 +184,7 @@ function conRuta(extra = {}) {
 
 describe('Página Mapa', () => {
   beforeEach(() => {
+    simularRutaRefugio()
     simularSupabaseListo({ useRefugios, useBloqueos, useSesion })
     useSismos.mockReset()
     useCiclones.mockReset()
@@ -522,9 +547,46 @@ describe('Página Mapa', () => {
   })
 
   describe('ruta de evacuación', () => {
-    it('muestra el botón Ruta a punto de reunión', () => {
+    // Etapa 4: un solo botón para la ruta en línea y la del teléfono
+    it('muestra un solo botón "Ruta a refugio" con el selector A pie / En carro', () => {
       render(<Mapa />, { wrapper: MemoryRouter })
-      expect(screen.getByRole('button', { name: 'Ruta a punto de reunión' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Ruta a refugio' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'A pie' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Ruta a punto de reunión' })).toBeNull()
+    })
+
+    it('le pasa a la ruta en línea el modo, la ruta del teléfono y cómo asegurar la sesión', () => {
+      render(<Mapa />, { wrapper: MemoryRouter })
+      const argumentos = useRutaRefugio.mock.lastCall[0]
+      expect(argumentos.modo).toMatch(/^(a_pie|carro)$/)
+      expect(argumentos.evacuacion).toBe(useRutaEvacuacion.mock.results.at(-1).value)
+      expect(argumentos).toHaveProperty('asegurarSesion')
+    })
+
+    it('con ruta en línea dibuja esa ruta, no la del teléfono', () => {
+      conRuta()
+      const rutaOrs = { type: 'Feature', geometry: { type: 'LineString', coordinates: [[-100.31, 25.67], [-100.30, 25.68]] }, properties: { modo: 'a_pie' } }
+      simularRutaRefugio({
+        estado: 'listo',
+        origen: [-100.31, 25.67],
+        resultado: {
+          estado: 'ruta',
+          modo: 'a_pie',
+          destino: { nombre: 'Escuela', posicion: [-100.30, 25.68] },
+          ruta: rutaOrs,
+          resumen: { distanciaM: 1500, duracionS: 1200, pasos: [] },
+          evitados: { bloqueos: 0, zonas: 0 },
+          consultadoEn: 1700000000000,
+        },
+      })
+      render(<Mapa />, { wrapper: MemoryRouter })
+      expect(capas.ruta).toMatchObject({ ruta: rutaOrs, origen: [-100.31, 25.67], destino: [-100.30, 25.68] })
+      expect(screen.getByText('Refugio Escuela: 20 min a pie · 1.5 km')).toBeInTheDocument()
+    })
+
+    it('dibuja las zonas de peligro debajo de bloqueos y ruta', () => {
+      render(<Mapa />, { wrapper: MemoryRouter })
+      expect(capas.zonas.visible).toBe(true)
     })
 
     it('le pasa a la ruta los sismos, los bloqueos y los refugios del mapa', () => {
@@ -576,6 +638,8 @@ describe('Página Mapa', () => {
     it('si los bloqueos no se pudieron cargar, el panel avisa que la ruta no los toma en cuenta', () => {
       simularSupabaseListo({ useRefugios, useBloqueos, useSesion }, { bloqueos: { bloqueos: null, estado: 'error' } })
       conRuta()
+      // El panel de la ruta del teléfono aparece cuando se usó como respaldo
+      simularRutaRefugio({ estado: 'respaldo', aviso: 'Sin conexión: ruta a pie calculada en tu teléfono.' })
       render(<Mapa />, { wrapper: MemoryRouter })
       expect(
         screen.getByText('No se pudieron cargar los bloqueos reportados: la ruta no los toma en cuenta.'),
@@ -584,9 +648,44 @@ describe('Página Mapa', () => {
 
     it('el panel muestra el resumen de la ruta', () => {
       conRuta()
+      simularRutaRefugio({ estado: 'respaldo', aviso: 'Sin conexión: ruta a pie calculada en tu teléfono.' })
       render(<Mapa />, { wrapper: MemoryRouter })
       expect(screen.getByText('Punto de reunión Plaza Hidalgo: 1.0 km · unos 15 min a pie · riesgo bajo')).toBeInTheDocument()
     })
   })
 
+})
+
+describe('Página Mapa: incidentes (etapa 6)', () => {
+  const INCIDENTES = { type: 'FeatureCollection', features: [] }
+
+  beforeEach(() => {
+    delete capas.incidentes
+    simularRutaRefugio()
+    useIncidentes.mockReset().mockReturnValue({ incidentes: INCIDENTES, estado: 'listo', recargar: vi.fn() })
+    simularSismos({ estado: 'listo', sismos: dosSismos, actualizadoEn: 1700000000000 })
+    simularCiclones()
+    simularSatelite()
+  })
+
+  it('un ciudadano no pide ni ve incidentes', () => {
+    simularSupabaseListo({ useRefugios, useBloqueos, useSesion })
+    render(<Mapa />, { wrapper: MemoryRouter })
+
+    expect(useIncidentes).toHaveBeenCalledWith(false)
+    expect(capas.incidentes).toBeUndefined()
+    expect(screen.queryByRole('checkbox', { name: 'Incidentes' })).toBeNull()
+  })
+
+  it('brigadistas y coordinadores ven la capa de incidentes y la pueden apagar', () => {
+    simularSupabaseListo({ useRefugios, useBloqueos, useSesion }, { sesion: { rol: 'coordinador' } })
+    render(<Mapa />, { wrapper: MemoryRouter })
+
+    expect(useIncidentes).toHaveBeenCalledWith(true)
+    expect(capas.incidentes.incidentes).toBe(INCIDENTES)
+    expect(capas.bloqueos.alCrearIncidente).toEqual(expect.any(Function))
+
+    act(() => screen.getByRole('checkbox', { name: 'Incidentes' }).click())
+    expect(capas.incidentes.visible).toBe(false)
+  })
 })

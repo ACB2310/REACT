@@ -43,3 +43,15 @@ describe('PanelCapas: refugios y bloqueos', () => {
     expect(alCambiar).toHaveBeenCalledWith('bloqueos', false)
   })
 })
+
+describe('PanelCapas: incidentes (etapa 6)', () => {
+  it('solo muestra Incidentes si la página lo pide', () => {
+    const capas = { sismos: true, ciclones: true, satelite: false, refugios: true, bloqueos: true, incidentes: true }
+    const { unmount } = render(<PanelCapas capas={capas} alCambiar={() => {}} />)
+    expect(screen.queryByRole('checkbox', { name: 'Incidentes' })).toBeNull()
+    unmount()
+
+    render(<PanelCapas capas={capas} alCambiar={() => {}} extras={['incidentes']} />)
+    expect(screen.getByRole('checkbox', { name: 'Incidentes' })).toBeChecked()
+  })
+})

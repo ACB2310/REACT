@@ -228,3 +228,143 @@
   font-size: 0.875rem;
   font-weight: 600;
 }
+
+/* ---------- Etapa 6: brigadas ---------- */
+
+.encabezado-pantalla {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.enlace-secundario {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--primario);
+  font-weight: 700;
+}
+
+/* Tarjetas de incidentes: una franja del color de la prioridad a la izquierda */
+.lista-tarjetas {
+  display: grid;
+  gap: 12px;
+  list-style: none;
+}
+
+.tarjeta {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--borde);
+  border-left: 6px solid var(--color-prioridad, var(--borde));
+  border-radius: 10px;
+  background-color: var(--superficie);
+}
+
+.tarjeta-encabezado {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.insignia-prioridad {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background-color: var(--color-prioridad, #6b7280);
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.tarjeta-secundaria {
+  align-items: end;
+  justify-content: space-between;
+}
+
+.campo-en-linea {
+  flex: 0 1 180px;
+  font-size: 0.875rem;
+}
+
+.lista-opciones {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+}
+
+.lista-opciones .boton-secundario {
+  width: 100%;
+  min-height: 48px;
+  font-size: 1rem;
+}
+
+.boton-texto-peligro {
+  min-height: 44px;
+  padding: 0 8px;
+  border: none;
+  background: none;
+  color: var(--error-texto);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.boton-texto-peligro:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Prioridad 1 a 5 como botones grandes */
+.opciones-prioridad {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+  border: none;
+}
+
+.opciones-prioridad legend {
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+
+.opcion-prioridad {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+  padding: 8px 10px;
+  border: 2px solid var(--borde);
+  border-left: 6px solid var(--color-prioridad);
+  border-radius: 10px;
+  background-color: var(--superficie);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.opcion-prioridad:has(input:checked) {
+  border-color: var(--color-prioridad);
+}
+
+.opcion-prioridad:has(input:focus-visible) {
+  outline: 3px solid var(--primario);
+  outline-offset: 2px;
+}
+
+.opcion-prioridad input {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--color-prioridad);
+}
+
+/* Paso actual del brigadista: un solo botón muy grande */
+.boton-paso {
+  min-height: 72px;
+  font-size: 1.25rem;
+}

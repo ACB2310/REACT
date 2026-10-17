@@ -15,6 +15,20 @@ describe('traducirErrorSupabase', () => {
     ['SIN_SESION', 'No se pudo iniciar una sesión para enviar el reporte.'],
     ['LIMITE_ZONA', 'Ya hay muchos reportes sin confirmar en esta zona. Si es urgente, avisa a Protección Civil o a un brigadista.'],
     ['RENOVACION_LIMITE', 'Este reporte ya no se puede renovar. Si el bloqueo sigue, repórtalo de nuevo.'],
+    ['BRIGADA_OCUPADA', 'La brigada ya tiene un incidente o no está disponible.'],
+    ['INCIDENTE_ASIGNADO', 'Ese incidente ya tiene una brigada asignada.'],
+    ['INCIDENTE_CERRADO', 'El incidente ya no existe o ya está atendido o cancelado.'],
+    ['TRANSICION_INVALIDA', 'Ese cambio de estado no es posible ahora.'],
+    ['SIN_BRIGADA', 'Tu cuenta no pertenece a ninguna brigada. Pide al coordinador que te agregue.'],
+    ['NOMBRE_REPETIDO', 'Ya existe una brigada con ese nombre.'],
+    ['BRIGADA_NO_EXISTE', 'La brigada ya no existe.'],
+    ['NO_ES_BRIGADISTA', 'Esa cuenta no tiene rol de brigadista.'],
+    ['LIMITE_RUTAS', 'Ya pediste muchas rutas en la última hora. Espera unos minutos.'],
+    ['ZONA_INVALIDA', 'La zona no es válida: revisa que sus lados no se crucen.'],
+    ['ZONA_GRANDE', 'La zona es demasiado grande (máximo 20 km²). Divídela en varias.'],
+    ['ZONA_NO_EXISTE', 'La zona ya no existe o ya estaba desactivada.'],
+    ['ORS_LIMITE', 'El servicio de rutas llegó a su límite de hoy.'],
+    ['ORS_LLAVE', 'El servicio de rutas no está configurado.'],
   ])('traduce %s', (codigo, mensaje) => {
     expect(traducirErrorSupabase(errorPostgres(codigo)).message).toBe(mensaje)
   })
@@ -52,5 +66,15 @@ describe('revisarRespuesta', () => {
     expect(() => revisarRespuesta({ data: null, error: errorPostgres('SIN_PERMISO') })).toThrow(
       'No tienes permiso para hacer esto.',
     )
+  })
+})
+
+describe('traducirErrorSupabase: códigos que contienen a otros', () => {
+  it('BRIGADA_NO_EXISTE no se confunde con NO_EXISTE (bloqueos)', () => {
+    expect(traducirErrorSupabase(errorPostgres('BRIGADA_NO_EXISTE')).message).toBe('La brigada ya no existe.')
+  })
+
+  it('reconoce el código aunque venga con texto alrededor', () => {
+    expect(traducirErrorSupabase({ message: 'ERROR: P0001: SIN_BRIGADA' }).message).toContain('no pertenece a ninguna brigada')
   })
 })

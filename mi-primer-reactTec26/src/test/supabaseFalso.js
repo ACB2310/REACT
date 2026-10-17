@@ -9,7 +9,7 @@ import { vi } from 'vitest'
 
 // `sesionInicial`: la sesión guardada en el navegador al abrir la app (o null)
 export function crearSupabaseFalso({ sesionInicial = null } = {}) {
-  const respuestas = { vistas: {}, rpc: {} }
+  const respuestas = { vistas: {}, rpc: {}, funciones: {} }
   const canales = []
   let alCambiarSesion = null
   let sesion = sesionInicial
@@ -37,7 +37,17 @@ export function crearSupabaseFalso({ sesionInicial = null } = {}) {
     respuestas,
     canales,
     from: vi.fn((vista) => consulta(vista)),
-    rpc: vi.fn(async (nombre) => respuestas.rpc[nombre] ?? { data: null, error: null }),
+    // rpc() también es encadenable: rpc('mi_asignacion').abortSignal(signal)
+    rpc: vi.fn((nombre) => {
+      const constructor = {
+        then(resolver, rechazar) {
+          const respuesta = respuestas.rpc[nombre] ?? { data: null, error: null }
+          return Promise.resolve(respuesta).then(resolver, rechazar)
+        },
+      }
+      constructor.abortSignal = vi.fn(() => constructor)
+      return constructor
+    }),
     channel: vi.fn((nombre) => {
       const canal = {
         nombre,
@@ -54,6 +64,10 @@ export function crearSupabaseFalso({ sesionInicial = null } = {}) {
     removeChannel: vi.fn(async (canal) => {
       canales.splice(canales.indexOf(canal), 1)
     }),
+    // Edge Functions: respuestas.funciones.rutas = { data, error }
+    functions: {
+      invoke: vi.fn(async (nombre) => respuestas.funciones[nombre] ?? { data: null, error: null }),
+    },
     auth: {
       getSession: vi.fn(async () => ({ data: { session: sesion }, error: null })),
       // Como Supabase: avisa enseguida la sesión inicial (INITIAL_SESSION)

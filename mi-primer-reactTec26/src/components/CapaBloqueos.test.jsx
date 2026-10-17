@@ -84,6 +84,25 @@ describe('CapaBloqueos', () => {
     expect(botones(tocar(mapa, bloqueo()))).toEqual(['Renovar 24 h', 'Eliminar'])
   })
 
+  it('el coordinador ve "Crear incidente" y manda el id y [longitud, latitud]', async () => {
+    const mapa = crearMapaFalso()
+    const alCrearIncidente = vi.fn()
+    render(<CapaBloqueos mapa={mapa} bloqueos={COLECCION} rol="coordinador" alCrearIncidente={alCrearIncidente} />)
+
+    const popup = tocar(mapa, bloqueo({ confirmado: true }))
+    const crear = [...popup.contenido.querySelectorAll('button')].find((b) => b.textContent === 'Crear incidente')
+    crear.click()
+
+    expect(alCrearIncidente).toHaveBeenCalledWith(10, [-103.35, 20.67])
+    await vi.waitFor(() => expect(popup.abierto).toBe(false))
+  })
+
+  it('un brigadista no ve "Crear incidente"', () => {
+    const mapa = crearMapaFalso()
+    render(<CapaBloqueos mapa={mapa} bloqueos={COLECCION} rol="brigadista" alCrearIncidente={vi.fn()} />)
+    expect(botones(tocar(mapa, bloqueo()))).not.toContain('Crear incidente')
+  })
+
   // Migración 4: solo un coordinador puede confirmar (el servidor lo vuelve a revisar)
   it('un coordinador ve Confirmar en un bloqueo sin confirmar', () => {
     const mapa = crearMapaFalso()

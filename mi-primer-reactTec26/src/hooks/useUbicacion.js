@@ -3,6 +3,9 @@ import { useCallback, useState } from 'react'
 // Tiempo máximo para que el GPS responda
 export const TIEMPO_UBICACION_MS = 15000
 
+export const MENSAJE_SIN_HTTPS =
+  'Tu ubicación solo funciona si la página se abre con https. Toca el mapa en su lugar.'
+
 // Errores de geolocalización en español (códigos de GeolocationPositionError)
 function mensajeDeError(error) {
   if (error?.code === 1) return 'No diste permiso para usar tu ubicación.'
@@ -18,6 +21,13 @@ export function useUbicacion() {
   const [error, setError] = useState(null)
 
   const pedir = useCallback(() => {
+    // En una página http (por ejemplo, la prueba en AWS sin https) el navegador bloquea
+    // el GPS aunque la persona dé permiso. Solo funciona con https o en localhost.
+    if (globalThis.isSecureContext === false) {
+      setEstado('error')
+      setError(MENSAJE_SIN_HTTPS)
+      return Promise.resolve(null)
+    }
     if (!navigator.geolocation) {
       setEstado('error')
       setError('Este dispositivo no puede dar tu ubicación. Toca el mapa en su lugar.')

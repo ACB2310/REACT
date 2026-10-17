@@ -59,6 +59,8 @@ function textoBloqueosSinConfirmar(cantidad) {
 
 // Panel para pedir la ruta a pie al punto de reunión o refugio más seguro.
 // Recibe lo que entrega useRutaEvacuacion y solo muestra textos y botones.
+// Con `mostrarBotones={false}` solo muestra los mensajes: lo usa PanelRuta (etapa 4)
+// cuando la ruta sin conexión es el respaldo de la ruta en línea, y el botón es el suyo.
 function PanelEvacuacion({
   estado,
   error,
@@ -72,6 +74,7 @@ function PanelEvacuacion({
   bloqueosSinConfirmarCerca,
   buscarRuta,
   limpiar,
+  mostrarBotones = true,
 }) {
   const hayRuta = estado === 'listo' && resultado
 
@@ -96,16 +99,18 @@ function PanelEvacuacion({
 
   return (
     <section className="panel-evacuacion" aria-label="Ruta de evacuación a pie">
-      <div className="panel-evacuacion-botones">
-        <button type="button" className="boton-evacuacion" onClick={buscarRuta}>
-          Ruta a punto de reunión
-        </button>
-        {hayRuta && (
-          <button type="button" className="boton-reintentar boton-secundario" onClick={limpiar}>
-            Quitar ruta
+      {mostrarBotones && (
+        <div className="panel-evacuacion-botones">
+          <button type="button" className="boton-evacuacion" onClick={buscarRuta}>
+            Ruta a punto de reunión
           </button>
-        )}
-      </div>
+          {hayRuta && (
+            <button type="button" className="boton-reintentar boton-secundario" onClick={limpiar}>
+              Quitar ruta
+            </button>
+          )}
+        </div>
+      )}
 
       {mensaje && (
         <div className={`mensaje-estado mensaje-${mensaje.tipo}`} role={mensaje.tipo === 'error' ? 'alert' : 'status'}>

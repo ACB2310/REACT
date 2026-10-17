@@ -56,7 +56,16 @@ export function entrar(correo, contrasena) {
 
 // Devuelve { necesitaConfirmar: true } si Supabase pide confirmar el correo
 export async function crearCuenta(correo, contrasena) {
-  const datos = await llamarAuth((auth) => auth.signUp({ email: correo, password: contrasena }))
+  // El enlace del correo de confirmación regresa a donde se abrió la app (localhost,
+  // la prueba en AWS, etc.). Esa dirección debe estar en Supabase:
+  // Authentication → URL Configuration → Redirect URLs.
+  const datos = await llamarAuth((auth) =>
+    auth.signUp({
+      email: correo,
+      password: contrasena,
+      options: { emailRedirectTo: window.location.origin },
+    }),
+  )
   return { necesitaConfirmar: !datos?.session }
 }
 

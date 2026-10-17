@@ -11,6 +11,24 @@ const MENSAJES = {
   // Migración 4: límite de reportes sin confirmar por zona y de renovaciones de ciudadanos
   LIMITE_ZONA: 'Ya hay muchos reportes sin confirmar en esta zona. Si es urgente, avisa a Protección Civil o a un brigadista.',
   RENOVACION_LIMITE: 'Este reporte ya no se puede renovar. Si el bloqueo sigue, repórtalo de nuevo.',
+  // Etapa 6 (migración 5): brigadas e incidentes
+  BRIGADA_OCUPADA: 'La brigada ya tiene un incidente o no está disponible.',
+  INCIDENTE_ASIGNADO: 'Ese incidente ya tiene una brigada asignada.',
+  INCIDENTE_CERRADO: 'El incidente ya no existe o ya está atendido o cancelado.',
+  TRANSICION_INVALIDA: 'Ese cambio de estado no es posible ahora.',
+  SIN_BRIGADA: 'Tu cuenta no pertenece a ninguna brigada. Pide al coordinador que te agregue.',
+  NOMBRE_REPETIDO: 'Ya existe una brigada con ese nombre.',
+  BRIGADA_NO_EXISTE: 'La brigada ya no existe.',
+  NO_ES_BRIGADISTA: 'Esa cuenta no tiene rol de brigadista.',
+  // Etapa 4 (migración 6 y Edge Function rutas): zonas de peligro y rutas en línea
+  LIMITE_RUTAS: 'Ya pediste muchas rutas en la última hora. Espera unos minutos.',
+  ZONA_INVALIDA: 'La zona no es válida: revisa que sus lados no se crucen.',
+  ZONA_GRANDE: 'La zona es demasiado grande (máximo 20 km²). Divídela en varias.',
+  ZONA_NO_EXISTE: 'La zona ya no existe o ya estaba desactivada.',
+  ORS_LIMITE: 'El servicio de rutas llegó a su límite de hoy.',
+  ORS_LLAVE: 'El servicio de rutas no está configurado.',
+  ORS_ERROR: 'El servicio de rutas no respondió.',
+  DATOS_INVALIDOS: 'No se pudo calcular la ruta desde ese punto.',
 }
 
 export const MENSAJE_SIN_CONEXION_SUPABASE = 'No se pudo conectar con Supabase'
@@ -33,8 +51,9 @@ export function traducirErrorSupabase(error) {
     return new Error(MENSAJE_TIEMPO_SUPABASE, { cause: error })
   }
 
+  // Se busca el código COMPLETO: 'NO_EXISTE' no debe coincidir dentro de 'BRIGADA_NO_EXISTE'
   for (const [codigo, mensaje] of Object.entries(MENSAJES)) {
-    if (texto.includes(codigo)) return new Error(mensaje, { cause: error })
+    if (new RegExp(`(^|[^A-Z_])${codigo}([^A-Z_]|$)`).test(texto)) return new Error(mensaje, { cause: error })
   }
 
   // fetch lanza TypeError cuando no hay red ("Failed to fetch", "Load failed"...)

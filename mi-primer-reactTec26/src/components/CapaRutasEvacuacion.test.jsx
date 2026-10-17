@@ -35,7 +35,10 @@ describe('CapaRutasEvacuacion', () => {
     render(<CapaRutasEvacuacion mapa={mapa} ruta={RUTA} origen={ORIGEN} destino={DESTINO} />)
 
     expect(mapa.fuentes['evacuacion-ruta'].definicion).toEqual({ type: 'geojson', data: RUTA })
-    expect(mapa.capas['evacuacion-ruta'].paint['line-color']).toEqual([
+    // Sin `modo` (ruta sin conexión) el color sale del riesgo; con `modo`, de la etapa 4
+    const [tipo, condicion, , colorPorRiesgo] = mapa.capas['evacuacion-ruta'].paint['line-color']
+    expect([tipo, condicion]).toEqual(['case', ['has', 'modo']])
+    expect(colorPorRiesgo).toEqual([
       'match', ['get', 'nivelRiesgo'],
       'bajo', '#16a34a',
       'medio', '#f59e0b',
