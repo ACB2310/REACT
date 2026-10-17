@@ -11,6 +11,9 @@ import { distanciaMetros } from '../utils/geo.js'
 // antenas) y una ruta calculada desde ahí podría empezar en otro lugar
 export const PRECISION_MAXIMA_M = 200
 
+// Radio para avisar cuántos bloqueos sin confirmar hay cerca de la persona
+const RADIO_AVISO_BLOQUEOS_M = 2500
+
 // Se usa como valor por defecto para no crear un arreglo nuevo en cada render
 const SIN_BLOQUEOS = []
 
@@ -203,8 +206,25 @@ export function useRutaEvacuacion({ sismos, bloqueos = SIN_BLOQUEOS, refugios = 
     return calcularConZona(busqueda.zona, destinos, nodoOrigen, busqueda.origen, sismos, bloqueos)
   }, [busqueda, destinos, nodoOrigen, sismos, bloqueos])
 
+  // Los bloqueos 'total' sin confirmar SÍ bloquean la ruta (ante la duda, no se pasa).
+  // Si por eso no hay ruta, la pantalla puede decir cuántos hay cerca sin confirmar.
+  const bloqueosSinConfirmarCerca = useMemo(() => {
+    if (!busqueda.origen) return 0
+    return (bloqueos ?? []).filter((b) => {
+      const p = b?.properties ?? {}
+      const coordenadas = b?.geometry?.type === 'Point' ? b.geometry.coordinates : null
+      return (
+        p.tipo !== 'solo_vehiculos' &&
+        p.confirmado !== true &&
+        coordenadas &&
+        distanciaMetros(busqueda.origen, coordenadas) <= RADIO_AVISO_BLOQUEOS_M
+      )
+    }).length
+  }, [busqueda.origen, bloqueos])
+
   return {
     estado: calculo ? calculo.estado : busqueda.fase,
+    bloqueosSinConfirmarCerca,
     error: calculo ? (calculo.error ?? null) : busqueda.error,
     // Por qué no hay ruta (solo con estado 'sin-ruta'), para que la pantalla lo explique
     motivo: calculo?.motivo ?? null,

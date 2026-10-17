@@ -490,6 +490,36 @@ describe('useRutaEvacuacion', () => {
     })
   })
 
+  // Decisión del usuario: los bloqueos 'total' sin confirmar SÍ bloquean, pero si por
+  // eso no hay ruta, la pantalla debe poder decir cuántos hay cerca sin confirmar
+  describe('bloqueos sin confirmar cerca', () => {
+    const punto = (coordenadas, propiedades) => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: coordenadas },
+      properties: { tipo: 'total', confirmado: false, ...propiedades },
+    })
+
+    it('cuenta los bloqueos total sin confirmar a 2.5 km o menos de la persona', async () => {
+      const bloqueos = [
+        punto([-100.305, 25.67]),
+        punto([-100.3, 25.675]),
+        punto([-100.305, 25.6701], { confirmado: true }),
+        punto([-100.306, 25.6701], { tipo: 'solo_vehiculos' }),
+        // ~10 km: no cuenta
+        punto([-100.2, 25.67]),
+      ]
+      const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA, bloqueos }))
+      await buscar(result)
+
+      expect(result.current.bloqueosSinConfirmarCerca).toBe(2)
+    })
+
+    it('antes de buscar es 0', () => {
+      const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA, bloqueos: [punto([-100.305, 25.67])] }))
+      expect(result.current.bloqueosSinConfirmarCerca).toBe(0)
+    })
+  })
+
   it('al desmontar cancela la descarga en curso', async () => {
     let senal
     obtenerCallesYPuntosReunion.mockImplementation((coordenadas, opciones) => {
