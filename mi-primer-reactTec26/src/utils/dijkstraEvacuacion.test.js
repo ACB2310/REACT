@@ -1,7 +1,7 @@
 // @vitest-environment node
 // Funciones puras sin DOM: el entorno node mide el tiempo como en el navegador real (jsdom lo hace ~8 veces más lento)
 import { describe, it, expect } from 'vitest'
-import { calcularRutaEvacuacion } from './dijkstraEvacuacion.js'
+import { calcularRutaEvacuacion, tramoBloqueadoAPie } from './dijkstraEvacuacion.js'
 import { sismosEjemplo } from '../mocks/sismosEjemplo.js'
 import {
   grafoMonterrey,
@@ -168,12 +168,61 @@ describe('calcularRutaEvacuacion', () => {
     expect(resultado.nodos).toEqual(['m1', 'm2', 'm4'])
   })
 
-  it('bloqueos null o con elementos vacíos no rompen el cálculo', () => {
-    const sinGeometria = { type: 'Feature', geometry: null, properties: { tipo: 'total' } }
+  it('bloqueos null equivale a no tener bloqueos', () => {
     expect(calcularRutaEvacuacion(grafoMonterrey, 'm1', ['m4'], SIN_SISMOS, { bloqueos: null }).estado).toBe('ok')
-    expect(
-      calcularRutaEvacuacion(grafoMonterrey, 'm1', ['m4'], SIN_SISMOS, { bloqueos: [null, sinGeometria] }).estado,
-    ).toBe('ok')
+  })
+
+  // Revisión final: un bloqueo que no se entiende NO se puede ignorar en silencio,
+  // porque la ruta podría cruzarlo. Se detiene el cálculo y el hook lo muestra como error.
+  it('un bloqueo con formato desconocido detiene el cálculo en lugar de ignorarse', () => {
+    const casos = [
+      [null],
+      [{ type: 'Feature', geometry: null, properties: { tipo: 'total' } }],
+      // Fila de Supabase sin convertir a Feature
+      [{ id: 1, tipo: 'total', geometria: { type: 'Point', coordinates: [-100.3075, 25.67] } }],
+      // Geometría en WKB (lo que PostgREST devuelve para geography si no se usa ST_AsGeoJSON)
+      ['0101000020E6100000'],
+    ]
+    for (const bloqueos of casos) {
+      expect(() => calcularRutaEvacuacion(grafoMonterrey, 'm1', ['m4'], SIN_SISMOS, { bloqueos })).toThrow(
+        'Hay un bloqueo con formato desconocido',
+      )
+    }
+  })
+
+  // Los bloqueos se dibujarán tocando el mapa: una línea nunca cae exacto sobre la calle de OSM
+  it('un bloqueo total en línea a 3 m de la calle la cierra', () => {
+    const linea = {
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: [[-100.309, 25.67003], [-100.306, 25.67003]] },
+      properties: { tipo: 'total' },
+    }
+    const resultado = calcularRutaEvacuacion(grafoMonterrey, 'm1', ['m4', 'm5'], SIN_SISMOS, { bloqueos: [linea] })
+    expect(resultado.nodos).toEqual(['m1', 'm3', 'm5'])
+  })
+
+  it('un polígono total a 10 m de la calle la cierra', () => {
+    // Cuadro al norte de m1-m2, con su borde sur a ~10 m de la calle
+    const poligono = {
+      type: 'Feature',
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[-100.308, 25.67009], [-100.307, 25.67009], [-100.307, 25.6705], [-100.308, 25.6705], [-100.308, 25.67009]]],
+      },
+      properties: { tipo: 'total' },
+    }
+    const resultado = calcularRutaEvacuacion(grafoMonterrey, 'm1', ['m4', 'm5'], SIN_SISMOS, { bloqueos: [poligono] })
+    expect(resultado.nodos).toEqual(['m1', 'm3', 'm5'])
+  })
+
+  it('un bloqueo en línea a ~100 m no cierra la calle', () => {
+    const linea = {
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: [[-100.309, 25.6709], [-100.306, 25.6709]] },
+      properties: { tipo: 'total' },
+    }
+    const resultado = calcularRutaEvacuacion(grafoMonterrey, 'm1', ['m4', 'm5'], SIN_SISMOS, { bloqueos: [linea] })
+    expect(resultado.nodos).toEqual(['m1', 'm2', 'm4'])
   })
 
   it('acepta los sismos como lista de Features además de FeatureCollection', () => {
@@ -219,6 +268,20 @@ describe('calcularRutaEvacuacion', () => {
 
     expect(resultado.estado).toBe('ok')
     expect(duracion).toBeLessThan(2000)
+  })
+
+  // Para revisar los tramos fuera del grafo: de la persona a la calle y de la calle al punto
+  it('tramoBloqueadoAPie revisa sismos fuertes y bloqueos en un tramo suelto', () => {
+    const cerca = [-99.9, 16.97] // a 3.3 km de gro1
+    const lejos = [-100.31, 25.67]
+    expect(tramoBloqueadoAPie(cerca, cerca, sismosEjemplo)).toBe(true)
+    expect(tramoBloqueadoAPie(lejos, lejos, sismosEjemplo)).toBe(false)
+    expect(
+      tramoBloqueadoAPie([-100.309, 25.67], [-100.306, 25.67], SIN_SISMOS, { bloqueos: [bloqueoSobreM1M2('total')] }),
+    ).toBe(true)
+    expect(
+      tramoBloqueadoAPie([-100.309, 25.67], [-100.306, 25.67], SIN_SISMOS, { bloqueos: [bloqueoSobreM1M2('solo_vehiculos')] }),
+    ).toBe(false)
   })
 
   it('origen desconocido', () => {

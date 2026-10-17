@@ -4,7 +4,8 @@ import { obtenerCallesYPuntosReunion } from '../services/overpass.js'
 import { construirZonaEvacuacion, nodoMasCercano } from '../utils/grafoOsm.js'
 import { guardarZona, leerZona } from '../utils/almacenZona.js'
 import { filtrarSismosActivos } from '../utils/riesgoSismico.js'
-import { calcularRutaEvacuacion } from '../utils/dijkstraEvacuacion.js'
+import { calcularRutaEvacuacion, tramoBloqueadoAPie } from '../utils/dijkstraEvacuacion.js'
+import { distanciaMetros } from '../utils/geo.js'
 
 // Si el teléfono reporta un margen de error mayor, la ubicación es aproximada (Wi-Fi o
 // antenas) y una ruta calculada desde ahí podría empezar en otro lugar
@@ -15,26 +16,68 @@ const SIN_BLOQUEOS = []
 
 const INICIAL = { fase: 'inactivo', error: null, zona: null, origen: null, precisionM: null, ubicadoEn: null }
 
-// Calcula la ruta con la zona (calles y puntos de reunión) y el nodo de calle más cercano a la persona.
-// Devuelve { estado, resultado, error } y nunca lanza: cualquier problema es un estado.
-function calcularConZona(zona, nodoOrigen, sismos, bloqueos) {
+// Calcula la ruta con la zona (calles y puntos de reunión), la ubicación de la persona (`origen`)
+// y el nodo de calle más cercano a ella. Devuelve { estado, motivo, resultado, error } y nunca
+// lanza: cualquier problema es un estado.
+//
+// Dijkstra solo ve la red de calles. Aquí se revisa lo que queda fuera de ella:
+// - el tramo de la persona a la primera esquina (hasta 300 m),
+// - la posición real de cada punto de reunión y su tramo desde la última esquina.
+// Cualquiera de esos tramos dentro de un bloqueo total o del radio crítico de un sismo fuerte
+// se descarta, igual que una calle.
+function calcularConZona(zona, nodoOrigen, origen, sismos, bloqueos) {
   try {
     if (zona.puntosReunion.length === 0) return { estado: 'sin-puntos' }
     if (nodoOrigen === null) return { estado: 'lejos-de-calles' }
 
+    const sismosActivos = filtrarSismosActivos(sismos, Date.now())
+    const bloqueado = (a, b) => tramoBloqueadoAPie(a, b, sismosActivos, { bloqueos })
+    const coordenadasNodo = (id) => zona.grafo.nodos[id].coordenadas
+
+    // ¿La persona misma está en una zona de peligro, o su camino a la primera calle lo cruza?
+    if (bloqueado(origen, origen) || bloqueado(origen, coordenadasNodo(nodoOrigen))) {
+      return { estado: 'sin-ruta', motivo: 'origen-en-zona-de-peligro' }
+    }
+
+    // Se revisa cada punto por su posición real, no solo por la esquina a la que se pegó
+    const puntosSeguros = zona.puntosReunion.filter(
+      (p) => !bloqueado(p.coordenadas, p.coordenadas) && !bloqueado(coordenadasNodo(p.nodoId), p.coordenadas),
+    )
+    if (puntosSeguros.length === 0) return { estado: 'sin-ruta', motivo: 'refugios-inalcanzables' }
+
     const ruta = calcularRutaEvacuacion(
       zona.grafo,
       nodoOrigen,
-      zona.puntosReunion.map((p) => p.nodoId),
-      filtrarSismosActivos(sismos, Date.now()),
+      puntosSeguros.map((p) => p.nodoId),
+      sismosActivos,
       { bloqueos },
     )
     if (ruta.estado !== 'ok') return { estado: 'sin-ruta', motivo: ruta.motivo }
 
-    const punto = zona.puntosReunion.find((p) => p.nodoId === ruta.refugioId)
+    // Si varios puntos seguros quedan en la misma esquina, se elige el más cercano a ella
+    const esquina = coordenadasNodo(ruta.refugioId)
+    const punto = puntosSeguros
+      .filter((p) => p.nodoId === ruta.refugioId)
+      .reduce((mejor, p) => (distanciaMetros(esquina, p.coordenadas) < distanciaMetros(esquina, mejor.coordenadas) ? p : mejor))
+
+    // La línea y la distancia van de la persona hasta el punto de reunión (no solo de esquina a esquina)
+    const distanciaM = Math.round(
+      ruta.distanciaM + distanciaMetros(origen, coordenadasNodo(nodoOrigen)) + distanciaMetros(esquina, punto.coordenadas),
+    )
+    const lineaCompleta = {
+      ...ruta.ruta,
+      geometry: { type: 'LineString', coordinates: [origen, ...ruta.ruta.geometry.coordinates, punto.coordenadas] },
+      properties: { ...ruta.ruta.properties, distanciaM },
+    }
     return {
       estado: 'listo',
-      resultado: { ...ruta, puntoReunion: { nombre: punto.nombre, coordenadas: punto.coordenadas } },
+      resultado: {
+        ...ruta,
+        distanciaM,
+        distanciaKm: Math.round(distanciaM / 100) / 10,
+        ruta: lineaCompleta,
+        puntoReunion: { nombre: punto.nombre, coordenadas: punto.coordenadas },
+      },
     }
   } catch (e) {
     // Datos inesperados: se avisa en lugar de mostrar una ruta que podría estar mal
@@ -132,12 +175,14 @@ export function useRutaEvacuacion({ sismos, bloqueos = SIN_BLOQUEOS }) {
   // La ruta depende de la zona, del origen y de los sismos y bloqueos ACTUALES
   const calculo = useMemo(() => {
     if (busqueda.fase !== 'zona-lista') return null
-    return calcularConZona(busqueda.zona, nodoOrigen, sismos, bloqueos)
+    return calcularConZona(busqueda.zona, nodoOrigen, busqueda.origen, sismos, bloqueos)
   }, [busqueda, nodoOrigen, sismos, bloqueos])
 
   return {
     estado: calculo ? calculo.estado : busqueda.fase,
     error: calculo ? (calculo.error ?? null) : busqueda.error,
+    // Por qué no hay ruta (solo con estado 'sin-ruta'), para que la pantalla lo explique
+    motivo: calculo?.motivo ?? null,
     resultado: calculo?.resultado ?? null,
     zona: busqueda.zona,
     origen: busqueda.origen,

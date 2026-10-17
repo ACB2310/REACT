@@ -18,27 +18,45 @@ function nivelDeRiesgo(riesgo) {
   return 'alto'
 }
 
-// Un bloqueo reportado como punto (tocando el mapa) cierra las calles a esta distancia o menos
-const RADIO_BLOQUEO_PUNTO_M = 20
+// Los bloqueos se reportan tocando el mapa, así que nunca caen exacto sobre la calle de
+// OpenStreetMap: un bloqueo (punto, línea o polígono) cierra las calles a esta distancia o menos
+const TOLERANCIA_BLOQUEO_M = 20
+
+// Formato que deben tener los bloqueos (lo que tendrá que entregar Supabase en la etapa 3):
+// un Feature de GeoJSON con geometría Point, LineString o Polygon (o sus Multi) en [lon, lat]
+// y properties.tipo 'total' o 'solo_vehiculos'. También se acepta la geometría sola.
+const TIPOS_GEOMETRIA_BLOQUEO = new Set(['Point', 'MultiPoint', 'LineString', 'MultiLineString', 'Polygon', 'MultiPolygon'])
+
+// Tramos rectos [p, q] de una línea o del contorno de un polígono
+function tramosDeGeometria(geometria) {
+  const lineas = {
+    LineString: () => [geometria.coordinates],
+    MultiLineString: () => geometria.coordinates,
+    Polygon: () => geometria.coordinates,
+    MultiPolygon: () => geometria.coordinates.flat(),
+  }[geometria.type]()
+  return lineas.flatMap((linea) => linea.slice(1).map((q, i) => [linea[i], q]))
+}
 
 // Prepara los bloqueos que impiden pasar A PIE, una sola vez por cálculo:
 // - Caminando, solo los "total" impiden el paso; los "solo_vehiculos" se pueden cruzar.
 // - Un bloqueo sin tipo conocido se trata como "total": ante la duda, no se pasa.
-// - Se acepta un Feature o una geometría suelta; los vacíos se ignoran.
+// - Un bloqueo con formato desconocido DETIENE el cálculo: ignorarlo podría dar una ruta que lo cruza.
 // - Se guarda la caja de cada bloqueo para descartar rápido las calles lejanas.
 function prepararBloqueosAPie(bloqueos) {
   const preparados = []
   for (const bloqueo of bloqueos ?? []) {
     const geometria = bloqueo?.type === 'Feature' ? bloqueo.geometry : bloqueo
-    if (!geometria?.type) continue
+    if (!TIPOS_GEOMETRIA_BLOQUEO.has(geometria?.type) || !Array.isArray(geometria.coordinates)) {
+      throw new Error('Hay un bloqueo con formato desconocido')
+    }
     if (bloqueo?.properties?.tipo === 'solo_vehiculos') continue
     const esPunto = geometria.type === 'Point' || geometria.type === 'MultiPoint'
-    const caja = cajaDeGeometria(geometria)
     preparados.push({
       geometria,
       esPunto,
-      // A los puntos se les da un radio para que sí cierren la calle de al lado
-      caja: esPunto ? agrandarCaja(caja, RADIO_BLOQUEO_PUNTO_M / 1000) : caja,
+      tramos: esPunto ? [] : tramosDeGeometria(geometria),
+      caja: agrandarCaja(cajaDeGeometria(geometria), TOLERANCIA_BLOQUEO_M / 1000),
     })
   }
   return preparados
@@ -49,21 +67,44 @@ function puntosDeBloqueo(geometria) {
   return geometria.type === 'Point' ? [geometria.coordinates] : geometria.coordinates
 }
 
-// ¿El tramo [a, b] toca algún bloqueo que impida pasar a pie?
-// Con a == b sirve para saber si un punto (un refugio) queda dentro de un bloqueo.
+// Distancia (m) entre dos tramos que no se cruzan: la menor de cada extremo al otro tramo
+function distanciaEntreTramosM([a, b], [p, q]) {
+  return (
+    Math.min(
+      distanciaPuntoSegmentoKm(a, p, q),
+      distanciaPuntoSegmentoKm(b, p, q),
+      distanciaPuntoSegmentoKm(p, a, b),
+      distanciaPuntoSegmentoKm(q, a, b),
+    ) * 1000
+  )
+}
+
+// ¿El tramo [a, b] toca algún bloqueo que impida pasar a pie (o pasa a 20 m o menos)?
+// Con a == b sirve para saber si un punto (un refugio, la persona) queda dentro de un bloqueo.
 function tocaBloqueoAPie(a, b, bloqueos) {
   if (bloqueos.length === 0) return false
   const cajaTramo = cajaDeGeometria({ type: 'LineString', coordinates: [a, b] })
   const tramo = a[0] === b[0] && a[1] === b[1] ? point(a) : lineString([a, b])
-  return bloqueos.some(({ geometria, esPunto, caja }) => {
+  return bloqueos.some(({ geometria, esPunto, tramos, caja }) => {
     if (!cajasSeTocan(cajaTramo, caja)) return false
     if (esPunto) {
       return puntosDeBloqueo(geometria).some(
-        (p) => distanciaPuntoSegmentoKm(p, a, b) * 1000 <= RADIO_BLOQUEO_PUNTO_M,
+        (p) => distanciaPuntoSegmentoKm(p, a, b) * 1000 <= TOLERANCIA_BLOQUEO_M,
       )
     }
-    return booleanIntersects(tramo, geometria)
+    return (
+      booleanIntersects(tramo, geometria) ||
+      tramos.some((tramoBloqueo) => distanciaEntreTramosM([a, b], tramoBloqueo) <= TOLERANCIA_BLOQUEO_M)
+    )
   })
+}
+
+// ¿Se puede caminar el tramo [a, b] (fuera del grafo)? Sirve para revisar lo que Dijkstra no ve:
+// el tramo de la persona a la primera calle y el de la última calle al punto de reunión.
+// Devuelve true si cruza el radio crítico de un sismo fuerte o un bloqueo total.
+export function tramoBloqueadoAPie(a, b, sismosActivos, { bloqueos = [] } = {}) {
+  if (factorRiesgoConSismosPreparados([a, b], prepararSismos(sismosActivos)) === Infinity) return true
+  return tocaBloqueoAPie(a, b, prepararBloqueosAPie(bloqueos))
 }
 
 // Arma la lista de vecinos de cada nodo con el costo de ir hacia ellos.

@@ -337,6 +337,83 @@ describe('useRutaEvacuacion', () => {
     expect(result.current.origen).toEqual(AQUI)
   })
 
+  // Revisión final: el punto de reunión se revisaba por la esquina de calle a la que se
+  // pegó (hasta 300 m), no por su posición real. Una plaza derrumbada no se debe ofrecer.
+  describe('puntos de reunión y origen fuera de la red de calles', () => {
+    // A ~100 m al este del nodo 3; se pega al nodo 3 igual que "Plaza Hidalgo"
+    const PLAZA_DERRUMBE = [-100.299, 25.6705]
+    const cuadroAlrededor = ([lon, lat], d) => ({
+      type: 'Feature',
+      geometry: { type: 'Polygon', coordinates: [[[lon - d, lat - d], [lon + d, lat - d], [lon + d, lat + d], [lon - d, lat + d], [lon - d, lat - d]]] },
+      properties: { tipo: 'total' },
+    })
+    const BLOQUEO_PLAZA = [cuadroAlrededor(PLAZA_DERRUMBE, 0.00015)]
+    const conPlaza = (soloEsa) => [
+      ...elementosOverpassEjemplo.filter((e) => e.type === 'way' || (!soloEsa && e.id === 900)),
+      { type: 'node', id: 950, lat: PLAZA_DERRUMBE[1], lon: PLAZA_DERRUMBE[0], tags: { emergency: 'assembly_point', name: 'Plaza en derrumbe' } },
+    ]
+
+    it('no ofrece un punto de reunión dentro de un bloqueo total aunque su calle esté libre', async () => {
+      obtenerCallesYPuntosReunion.mockResolvedValue({ elementos: conPlaza(true), descargadoEn: Date.now() })
+      const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA, bloqueos: BLOQUEO_PLAZA }))
+      await buscar(result)
+
+      expect(result.current.estado).toBe('sin-ruta')
+      expect(result.current.motivo).toBe('refugios-inalcanzables')
+      expect(result.current.resultado).toBeNull()
+    })
+
+    it('si otro punto pegado a la misma calle está libre, ofrece ese', async () => {
+      obtenerCallesYPuntosReunion.mockResolvedValue({ elementos: conPlaza(false), descargadoEn: Date.now() })
+      const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA, bloqueos: BLOQUEO_PLAZA }))
+      await buscar(result)
+
+      expect(result.current.estado).toBe('listo')
+      expect(result.current.resultado.puntoReunion.nombre).toBe('Plaza Hidalgo')
+    })
+
+    it('si la persona está dentro de un bloqueo total no calcula y lo dice', async () => {
+      const { result } = renderHook(() =>
+        useRutaEvacuacion({ sismos: VACIA, bloqueos: [cuadroAlrededor(AQUI, 0.00003)] }),
+      )
+      await buscar(result)
+
+      expect(result.current.estado).toBe('sin-ruta')
+      expect(result.current.motivo).toBe('origen-en-zona-de-peligro')
+    })
+
+    it('si la persona está en el radio crítico de un sismo fuerte lo dice', async () => {
+      const { result } = renderHook(() => useRutaEvacuacion({ sismos: sismoFuerte(0) }))
+      await buscar(result)
+
+      expect(result.current.estado).toBe('sin-ruta')
+      expect(result.current.motivo).toBe('origen-en-zona-de-peligro')
+    })
+
+    it('la línea va de la persona al punto de reunión y la distancia cuenta esos tramos', async () => {
+      const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA }))
+      await buscar(result)
+
+      const { ruta, distanciaM } = result.current.resultado
+      expect(ruta.geometry.coordinates[0]).toEqual(AQUI)
+      expect(ruta.geometry.coordinates.at(-1)).toEqual([-100.3001, 25.6702])
+      // 1002 m por calles + ~14 m de la persona a la esquina + ~24 m de la esquina a la plaza
+      expect(Math.abs(distanciaM - 1040)).toBeLessThanOrEqual(5)
+      expect(ruta.properties.distanciaM).toBe(distanciaM)
+      expect(result.current.resultado.distanciaKm).toBe(1.0)
+    })
+
+    it('un bloqueo con formato desconocido se muestra como error, nunca como ruta', async () => {
+      const filaSinConvertir = { id: 7, tipo: 'total', geometria: 'WKB...' }
+      const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA, bloqueos: [filaSinConvertir] }))
+      await buscar(result)
+
+      expect(result.current.estado).toBe('error')
+      expect(result.current.error).toBe('Hay un bloqueo con formato desconocido')
+      expect(result.current.resultado).toBeNull()
+    })
+  })
+
   it('al desmontar cancela la descarga en curso', async () => {
     let senal
     obtenerCallesYPuntosReunion.mockImplementation((coordenadas, opciones) => {
