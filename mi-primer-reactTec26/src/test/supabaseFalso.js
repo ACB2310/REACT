@@ -9,7 +9,7 @@ import { vi } from 'vitest'
 
 // `sesionInicial`: la sesión guardada en el navegador al abrir la app (o null)
 export function crearSupabaseFalso({ sesionInicial = null } = {}) {
-  const respuestas = { vistas: {}, rpc: {} }
+  const respuestas = { vistas: {}, rpc: {}, funciones: {} }
   const canales = []
   let alCambiarSesion = null
   let sesion = sesionInicial
@@ -64,6 +64,10 @@ export function crearSupabaseFalso({ sesionInicial = null } = {}) {
     removeChannel: vi.fn(async (canal) => {
       canales.splice(canales.indexOf(canal), 1)
     }),
+    // Edge Functions: respuestas.funciones.rutas = { data, error }
+    functions: {
+      invoke: vi.fn(async (nombre) => respuestas.funciones[nombre] ?? { data: null, error: null }),
+    },
     auth: {
       getSession: vi.fn(async () => ({ data: { session: sesion }, error: null })),
       // Como Supabase: avisa enseguida la sesión inicial (INITIAL_SESSION)

@@ -23,6 +23,12 @@ describe('traducirErrorSupabase', () => {
     ['NOMBRE_REPETIDO', 'Ya existe una brigada con ese nombre.'],
     ['BRIGADA_NO_EXISTE', 'La brigada ya no existe.'],
     ['NO_ES_BRIGADISTA', 'Esa cuenta no tiene rol de brigadista.'],
+    ['LIMITE_RUTAS', 'Ya pediste muchas rutas en la última hora. Espera unos minutos.'],
+    ['ZONA_INVALIDA', 'La zona no es válida: revisa que sus lados no se crucen.'],
+    ['ZONA_GRANDE', 'La zona es demasiado grande (máximo 20 km²). Divídela en varias.'],
+    ['ZONA_NO_EXISTE', 'La zona ya no existe o ya estaba desactivada.'],
+    ['ORS_LIMITE', 'El servicio de rutas llegó a su límite de hoy.'],
+    ['ORS_LLAVE', 'El servicio de rutas no está configurado.'],
   ])('traduce %s', (codigo, mensaje) => {
     expect(traducirErrorSupabase(errorPostgres(codigo)).message).toBe(mensaje)
   })

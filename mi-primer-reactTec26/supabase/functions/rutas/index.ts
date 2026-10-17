@@ -16,7 +16,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { ErrorRutas, PERFILES, codigoErrorOrs, planificarRuta } from './logica.js'
 
 const ORS = 'https://api.openrouteservice.org'
-const TIEMPO_LIMITE_MS = 15000
+// Matriz + rutas (en paralelo) deben terminar antes de los 15 s que espera la app
+const TIEMPO_LIMITE_MS = 6000
 // Misma caja que dentro_de_mexico() en SQL: [oeste, sur, este, norte]
 const CAJA_MEXICO = [-118.6, 14.3, -86.5, 32.8]
 

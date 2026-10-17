@@ -20,6 +20,15 @@ const MENSAJES = {
   NOMBRE_REPETIDO: 'Ya existe una brigada con ese nombre.',
   BRIGADA_NO_EXISTE: 'La brigada ya no existe.',
   NO_ES_BRIGADISTA: 'Esa cuenta no tiene rol de brigadista.',
+  // Etapa 4 (migración 6 y Edge Function rutas): zonas de peligro y rutas en línea
+  LIMITE_RUTAS: 'Ya pediste muchas rutas en la última hora. Espera unos minutos.',
+  ZONA_INVALIDA: 'La zona no es válida: revisa que sus lados no se crucen.',
+  ZONA_GRANDE: 'La zona es demasiado grande (máximo 20 km²). Divídela en varias.',
+  ZONA_NO_EXISTE: 'La zona ya no existe o ya estaba desactivada.',
+  ORS_LIMITE: 'El servicio de rutas llegó a su límite de hoy.',
+  ORS_LLAVE: 'El servicio de rutas no está configurado.',
+  ORS_ERROR: 'El servicio de rutas no respondió.',
+  DATOS_INVALIDOS: 'No se pudo calcular la ruta desde ese punto.',
 }
 
 export const MENSAJE_SIN_CONEXION_SUPABASE = 'No se pudo conectar con Supabase'
