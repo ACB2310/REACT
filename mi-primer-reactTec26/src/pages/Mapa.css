@@ -251,3 +251,41 @@
   outline: 3px solid var(--texto);
   outline-offset: 3px;
 }
+
+/* Panel de la ruta de evacuación a pie, arriba del mapa */
+.panel-evacuacion {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.panel-evacuacion-botones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Acción de emergencia: grande, de alto contraste y fácil de tocar con prisa */
+.boton-evacuacion {
+  min-height: 56px;
+  padding: 0 20px;
+  border: none;
+  border-radius: 10px;
+  background-color: #15803d;
+  color: #ffffff;
+  font-size: 1.0625rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.boton-evacuacion:focus-visible,
+.boton-secundario:focus-visible {
+  outline: 3px solid var(--texto);
+  outline-offset: 2px;
+}
+
+.boton-secundario {
+  background-color: var(--superficie);
+  color: var(--texto);
+  border: 2px solid var(--borde);
+}

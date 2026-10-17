@@ -26,7 +26,7 @@ vi.mock('../hooks/useSatelite.js', () => ({ useSatelite: vi.fn() }))
 vi.mock('../hooks/useRefugios.js', () => ({ useRefugios: vi.fn() }))
 vi.mock('../hooks/useBloqueos.js', () => ({ useBloqueos: vi.fn() }))
 vi.mock('../hooks/useSesion.js', () => ({ useSesion: vi.fn() }))
-vi.mock('../services/bloqueos.js', () => ({ renovarBloqueo: vi.fn(), eliminarBloqueo: vi.fn() }))
+vi.mock('../services/bloqueos.js', () => ({ renovarBloqueo: vi.fn(), eliminarBloqueo: vi.fn(), confirmarBloqueo: vi.fn() }))
 vi.mock('../components/MapaBase.jsx', () => ({
   default: function MapaBaseFalso({ alCargar }) {
     useEffect(() => {
@@ -73,7 +73,9 @@ describe('Página Mapa con las capas reales', () => {
     expect(mapa.fuentes.satelite).toBeUndefined()
   })
 
-  it('los bloqueos quedan arriba de sismos y refugios', () => {
+  // Tarea 10: la ruta de evacuación va hasta arriba (debe verse siempre y nunca cruza un
+  // bloqueo total); debajo de ella, los bloqueos siguen arriba de sismos y refugios
+  it('los bloqueos quedan arriba de sismos y refugios, y la ruta arriba de todo', () => {
     mapaFalso.actual = crearMapaFalso()
     useSismos.mockReturnValue({
       sismos: sismosEjemplo,
@@ -97,6 +99,7 @@ describe('Página Mapa con las capas reales', () => {
     const { orden } = mapaFalso.actual
     expect(orden.indexOf('sismos-circulos')).toBeLessThan(orden.indexOf('refugios-puntos'))
     expect(orden.indexOf('refugios-puntos')).toBeLessThan(orden.indexOf('bloqueos-puntos'))
-    expect(orden.at(-1)).toBe('bloqueos-toque')
+    expect(orden.indexOf('bloqueos-toque')).toBeLessThan(orden.indexOf('evacuacion-ruta-borde'))
+    expect(orden.slice(-3)).toEqual(['evacuacion-ruta-borde', 'evacuacion-ruta', 'evacuacion-puntos'])
   })
 })

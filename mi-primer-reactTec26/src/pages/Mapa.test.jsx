@@ -8,6 +8,7 @@ import { useSatelite } from '../hooks/useSatelite.js'
 import { useRefugios } from '../hooks/useRefugios.js'
 import { useBloqueos } from '../hooks/useBloqueos.js'
 import { useSesion } from '../hooks/useSesion.js'
+import { useRutaEvacuacion } from '../hooks/useRutaEvacuacion.js'
 import { simularSupabaseListo } from '../test/simularSupabase.js'
 import { renovarBloqueo, eliminarBloqueo } from '../services/bloqueos.js'
 import { sismosEjemplo } from '../mocks/sismosEjemplo.js'
@@ -21,10 +22,17 @@ vi.mock('../hooks/useSatelite.js', () => ({ useSatelite: vi.fn() }))
 vi.mock('../hooks/useRefugios.js', () => ({ useRefugios: vi.fn() }))
 vi.mock('../hooks/useBloqueos.js', () => ({ useBloqueos: vi.fn() }))
 vi.mock('../hooks/useSesion.js', () => ({ useSesion: vi.fn() }))
-vi.mock('../services/bloqueos.js', () => ({ renovarBloqueo: vi.fn(), eliminarBloqueo: vi.fn() }))
+vi.mock('../services/bloqueos.js', () => ({ renovarBloqueo: vi.fn(), eliminarBloqueo: vi.fn(), confirmarBloqueo: vi.fn() }))
+// La ruta de evacuación se simula: sus reglas se prueban en useRutaEvacuacion.test.js
+vi.mock('../hooks/useRutaEvacuacion.js', () => ({ useRutaEvacuacion: vi.fn() }))
 // MapLibre necesita WebGL; aquí solo se prueba lo que muestra la página alrededor del mapa
 // El MapaBase falso guarda sus props para poder simular que el mapa base falla
-const { mapaBase, capas } = vi.hoisted(() => ({ mapaBase: { props: null, montajes: 0 }, capas: {} }))
+const { mapaBase, capas, ordenRender } = vi.hoisted(() => ({
+  mapaBase: { props: null, montajes: 0 },
+  capas: {},
+  // En qué orden se dibujan las capas (la ruta debe ir al final para quedar encima)
+  ordenRender: [],
+}))
 vi.mock('../components/MapaBase.jsx', async () => {
   const { useEffect } = await import('react')
   return {
@@ -42,7 +50,12 @@ vi.mock('../components/CapaSismos.jsx', () => ({ default: (props) => ((capas.sis
 vi.mock('../components/CapaCiclones.jsx', () => ({ default: (props) => ((capas.ciclones = props), null) }))
 vi.mock('../components/CapaSatelite.jsx', () => ({ default: (props) => ((capas.satelite = props), null) }))
 vi.mock('../components/CapaRefugios.jsx', () => ({ default: (props) => ((capas.refugios = props), null) }))
-vi.mock('../components/CapaBloqueos.jsx', () => ({ default: (props) => ((capas.bloqueos = props), null) }))
+vi.mock('../components/CapaBloqueos.jsx', () => ({
+  default: (props) => ((capas.bloqueos = props), ordenRender.push('bloqueos'), null),
+}))
+vi.mock('../components/CapaRutasEvacuacion.jsx', () => ({
+  default: (props) => ((capas.ruta = props), ordenRender.push('ruta'), null),
+}))
 
 const AVISO =
   'Plataforma informativa. Las indicaciones oficiales de Protección Civil, SMN y SSN tienen prioridad.'
@@ -102,6 +115,49 @@ function simularSatelite(valores = {}) {
   useSatelite.mockReturnValue(estadoFuente(valores))
 }
 
+const RUTA = {
+  type: 'Feature',
+  geometry: { type: 'LineString', coordinates: [[-100.31, 25.67], [-100.3, 25.67]] },
+  properties: { refugioId: '3', distanciaM: 1040, nivelRiesgo: 'bajo' },
+}
+
+function simularEvacuacion(valores = {}) {
+  const valor = {
+    estado: 'inactivo',
+    error: null,
+    motivo: null,
+    resultado: null,
+    zona: null,
+    origen: null,
+    precisionM: null,
+    ubicadoEn: null,
+    sinDatosSismos: false,
+    bloqueosSinConfirmarCerca: 0,
+    buscarRuta: vi.fn(),
+    limpiar: vi.fn(),
+    ...valores,
+  }
+  useRutaEvacuacion.mockReturnValue(valor)
+  return valor
+}
+
+function conRuta(extra = {}) {
+  return simularEvacuacion({
+    estado: 'listo',
+    origen: [-100.3099, 25.6701],
+    zona: { descargadoEn: Date.UTC(2026, 9, 16, 22) },
+    ubicadoEn: Date.UTC(2026, 9, 16, 22, 5),
+    resultado: {
+      estado: 'ok',
+      distanciaM: 1040,
+      nivelRiesgo: 'bajo',
+      ruta: RUTA,
+      puntoReunion: { nombre: 'Plaza Hidalgo', coordenadas: [-100.3001, 25.6702], tipo: 'punto-reunion' },
+    },
+    ...extra,
+  })
+}
+
 describe('Página Mapa', () => {
   beforeEach(() => {
     simularSupabaseListo({ useRefugios, useBloqueos, useSesion })
@@ -113,6 +169,8 @@ describe('Página Mapa', () => {
     simularSismos({ estado: 'listo', sismos: dosSismos, actualizadoEn: 1700000000000 })
     simularCiclones()
     simularSatelite()
+    simularEvacuacion()
+    ordenRender.length = 0
   })
 
   it('muestra el título Mapa en vivo', () => {
@@ -462,4 +520,64 @@ describe('Página Mapa', () => {
       expect(screen.getByRole('link', { name: 'Reportar bloqueo' })).toHaveAttribute('href', '/reportar')
     })
   })
+
+  describe('ruta de evacuación', () => {
+    it('muestra el botón Ruta a punto de reunión', () => {
+      render(<Mapa />, { wrapper: MemoryRouter })
+      expect(screen.getByRole('button', { name: 'Ruta a punto de reunión' })).toBeInTheDocument()
+    })
+
+    it('le pasa a la ruta los sismos, los bloqueos y los refugios del mapa', () => {
+      const bloqueo = { type: 'Feature', geometry: { type: 'Point', coordinates: [-103.35, 20.67] }, properties: { tipo: 'total' } }
+      const refugios = { type: 'FeatureCollection', features: [] }
+      simularSupabaseListo(
+        { useRefugios, useBloqueos, useSesion },
+        { bloqueos: { bloqueos: { type: 'FeatureCollection', features: [bloqueo] } }, refugios: { refugios } },
+      )
+      render(<Mapa />, { wrapper: MemoryRouter })
+
+      expect(useRutaEvacuacion).toHaveBeenLastCalledWith({ sismos: dosSismos, bloqueos: [bloqueo], refugios })
+    })
+
+    it('los bloqueos que recibe la ruta son el mismo arreglo entre renders', () => {
+      const bloqueos = { type: 'FeatureCollection', features: [] }
+      simularSupabaseListo({ useRefugios, useBloqueos, useSesion }, { bloqueos: { bloqueos } })
+      const { rerender } = render(<Mapa />, { wrapper: MemoryRouter })
+      const primero = useRutaEvacuacion.mock.lastCall[0].bloqueos
+      rerender(<Mapa />)
+      expect(useRutaEvacuacion.mock.lastCall[0].bloqueos).toBe(primero)
+    })
+
+    it('pasa la ruta, el origen y el destino a CapaRutasEvacuacion', () => {
+      conRuta()
+      render(<Mapa />, { wrapper: MemoryRouter })
+      expect(capas.ruta).toMatchObject({ ruta: RUTA, origen: [-100.3099, 25.6701], destino: [-100.3001, 25.6702] })
+    })
+
+    it('sin ruta no dibuja ni origen ni destino', () => {
+      simularEvacuacion({ estado: 'sin-ruta', motivo: 'refugios-inalcanzables', origen: [-100.3099, 25.6701] })
+      render(<Mapa />, { wrapper: MemoryRouter })
+      expect(capas.ruta).toMatchObject({ ruta: null, origen: null, destino: null })
+    })
+
+    it('sin datos de sismos la ruta se dibuja gris (riesgo desconocido)', () => {
+      conRuta({ sinDatosSismos: true })
+      render(<Mapa />, { wrapper: MemoryRouter })
+      expect(capas.ruta.ruta.properties.nivelRiesgo).toBe('desconocido')
+      expect(capas.ruta.ruta.geometry).toEqual(RUTA.geometry)
+    })
+
+    it('la capa de la ruta se dibuja después de los bloqueos para quedar encima', () => {
+      conRuta()
+      render(<Mapa />, { wrapper: MemoryRouter })
+      expect(ordenRender.lastIndexOf('ruta')).toBeGreaterThan(ordenRender.lastIndexOf('bloqueos'))
+    })
+
+    it('el panel muestra el resumen de la ruta', () => {
+      conRuta()
+      render(<Mapa />, { wrapper: MemoryRouter })
+      expect(screen.getByText('Punto de reunión Plaza Hidalgo: 1.0 km · unos 15 min a pie · riesgo bajo')).toBeInTheDocument()
+    })
+  })
+
 })

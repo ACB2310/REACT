@@ -72,6 +72,7 @@ Reglas:
 | Open-Meteo (Marine y Forecast API) | Clima, oleaje, corrientes | No | Frontend |
 | NASA GIBS (WMTS) | Teselas de satélite `GOES-East_ABI_GeoColor`; la hora se obtiene con `HEAD` + cabecera `Layer-Time-Actual` | No | Frontend (capa del mapa) |
 | NASA FIRMS | Incendios | Sí | Edge Function |
+| OpenStreetMap (API Overpass, `overpass-api.de`, **POST**; GET responde 406) | Calles caminables y puntos de reunión (`emergency=assembly_point`) | No | Frontend, **solo cuando la persona lo pide** (uso justo; tarda hasta ~40 s) |
 | OpenRouteService | Rutas en carro y a pie, `avoid_polygons`, matrices, isócronas | Sí | **Edge Function** |
 
 Notas sobre ciclones (decisión del 2026-10-16):
@@ -99,7 +100,14 @@ Toda geometría se maneja en **GeoJSON con coordenadas `[longitud, latitud]`** (
 
 Crea **índices GIST** en todas las columnas geográficas. Los cambios de esquema van como migraciones en `supabase/migrations/` (se aplican pegándolas en el SQL Editor, en orden). Después de cambiar políticas, corre `supabase/pruebas/verificar_rls.sql`.
 
-La app lee de las vistas `refugios_vista` y `bloqueos_vista` (traen `longitud` y `latitud`) y escribe con RPC: `reportar_bloqueo`, `renovar_bloqueo`, `eliminar_bloqueo` y `actualizar_refugio`. Los errores de esas funciones son códigos (`LIMITE_REPORTES`, `FUERA_DE_MEXICO`, `SIN_PERMISO`, `NO_EXISTE`, `SIN_SESION`) que `src/services/erroresSupabase.js` traduce.
+La app lee de las vistas `refugios_vista` y `bloqueos_vista` (traen `longitud` y `latitud`) y escribe con RPC: `reportar_bloqueo`, `renovar_bloqueo`, `eliminar_bloqueo`, `confirmar_bloqueo` y `actualizar_refugio`. Los errores de esas funciones son códigos (`LIMITE_REPORTES`, `LIMITE_ZONA`, `RENOVACION_LIMITE`, `FUERA_DE_MEXICO`, `SIN_PERMISO`, `NO_EXISTE`, `SIN_SESION`) que `src/services/erroresSupabase.js` traduce.
+
+Seguridad de los bloqueos (migración 4, 2026-10-17) — **no deshacer sin revisar**:
+- Límite por zona contra reportes falsos: máximo **10 por hora** y **20 vivos** sin confirmar de ciudadanos a 1 km. Los de brigadistas y coordinadores no cuentan.
+- Un ciudadano solo renueva su reporte durante sus **primeras 48 h**. Solo el **coordinador** confirma (`confirmar_bloqueo`, botón Confirmar en el popup).
+- `reportado_por` **no se puede leer** en la tabla (permisos por columna) ni llega por tiempo real. "Es mío" sale de `ids_bloqueos_mios()`. **No** hagas `grant select on all tables` ni vuelvas a publicar `bloqueos` en Realtime desde el panel.
+- Los avisos de cambios van por el canal **privado** `bloqueos-cambios` (`realtime.send`); nadie puede enviar desde la app. La app recarga como máximo una vez cada 5 s.
+- En el proyecto real: activar **CAPTCHA** para sesiones anónimas y bajar su límite de creación por IP.
 
 Decisiones de la etapa 3 (2026-10-16):
 - **Cualquiera puede reportar**, con o sin cuenta. Sin cuenta se usa la sesión **anónima** de Supabase, que se crea solo al enviar el primer reporte. Límite: 5 reportes por hora por sesión.
@@ -120,6 +128,14 @@ Decisiones de la etapa 3 (2026-10-16):
   3. Elegir el candidato con el **menor tiempo total**, no el más cercano.
   4. Mostrar el tramo en carro y el tramo a pie con colores distintos y con instrucciones claras.
 - Si no existe ninguna ruta posible, decirlo explícitamente en la interfaz. Nunca mostrar una ruta que cruce un bloqueo `total`.
+
+**Ruta a pie sin conexión (Dijkstra con riesgo sísmico)** — complemento de ORS (decisión del 2026-10-16). ORS sigue siendo el motor principal en línea (etapa 4).
+- Botón "Ruta a punto de reunión". Las calles y los puntos de reunión salen de OpenStreetMap (Overpass), se descargan **solo al pedirlo** y se guardan en el teléfono (`localStorage`, sirve a ≤ 500 m y ≤ 7 días) para calcular **sin red**.
+- Destinos: puntos de reunión de OSM y refugios **abiertos** de Supabase, a ≤ 300 m de una calle. Cada destino y el tramo de la persona a la primera calle se revisan por su **posición real**.
+- Costo de cada calle: `distancia * (1 + factorRiesgoSismico + vulnerabilidadVia)`. Un sismo M ≥ 6 **bloquea** las calles dentro de su radio crítico (¼ del radio de influencia `10^(0.5·mag − 1.5)` km). Solo cuentan los sismos de las últimas 72 h.
+- **Todos** los bloqueos `total` vigentes bloquean, **confirmados o no** (decisión del usuario). Si por eso no hay ruta, el panel avisa cuántos hay sin confirmar cerca. Un bloqueo con formato desconocido **detiene** el cálculo. Puntos, líneas y polígonos cierran las calles a ≤ 20 m.
+- Sin datos de USGS el riesgo sísmico es **desconocido**: el panel lo dice y la línea va gris. Con precisión de GPS peor que 200 m no se calcula.
+- Código: `src/utils/dijkstraEvacuacion.js`, `riesgoSismico.js`, `grafoOsm.js`, `almacenZona.js`, `src/services/overpass.js`, `ubicacion.js`, `src/hooks/useRutaEvacuacion.js`, `src/components/PanelEvacuacion.jsx`, `CapaRutasEvacuacion.jsx`.
 
 ## Interfaz
 

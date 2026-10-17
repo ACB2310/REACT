@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import MapaBase from '../components/MapaBase.jsx'
 import CapaSismos from '../components/CapaSismos.jsx'
@@ -11,16 +11,22 @@ import PanelCapas from '../components/PanelCapas.jsx'
 import CapaRefugios from '../components/CapaRefugios.jsx'
 import CapaBloqueos from '../components/CapaBloqueos.jsx'
 import LeyendaRefugiosBloqueos from '../components/LeyendaRefugiosBloqueos.jsx'
+import PanelEvacuacion from '../components/PanelEvacuacion.jsx'
+import CapaRutasEvacuacion from '../components/CapaRutasEvacuacion.jsx'
 import { useSismos } from '../hooks/useSismos.js'
 import { useCiclones } from '../hooks/useCiclones.js'
 import { useSatelite } from '../hooks/useSatelite.js'
 import { useRefugios } from '../hooks/useRefugios.js'
 import { useBloqueos } from '../hooks/useBloqueos.js'
 import { useSesion } from '../hooks/useSesion.js'
+import { useRutaEvacuacion } from '../hooks/useRutaEvacuacion.js'
 import { renovarBloqueo, eliminarBloqueo, confirmarBloqueo } from '../services/bloqueos.js'
 import { formatearFechaHora } from '../utils/fechas.js'
 import { AVISO_OFICIAL } from '../utils/avisos.js'
 import './Mapa.css'
+
+// Arreglo vacío fijo: la ruta se recalcula cada vez que cambia el arreglo de bloqueos
+const SIN_BLOQUEOS = []
 
 
 // Mientras no haya datos no hay hora que mostrar
@@ -64,6 +70,22 @@ function Mapa() {
   const refugios = useRefugios()
   const bloqueos = useBloqueos()
   const { rol, configurado: supabaseConfigurado } = useSesion()
+
+  // Ruta a pie al punto de reunión o refugio más seguro. Los bloqueos se pasan como un
+  // arreglo ESTABLE (solo cambia cuando cambian los bloqueos), para no recalcular en cada render.
+  const bloqueosParaRuta = useMemo(() => bloqueos.bloqueos?.features ?? SIN_BLOQUEOS, [bloqueos.bloqueos])
+  const evacuacion = useRutaEvacuacion({
+    sismos: sismos.sismos,
+    bloqueos: bloqueosParaRuta,
+    refugios: refugios.refugios,
+  })
+  const { resultado: resultadoRuta, sinDatosSismos } = evacuacion
+  // Sin datos de sismos el riesgo es desconocido: la línea se dibuja gris, no verde
+  const rutaParaMapa = useMemo(() => {
+    if (!resultadoRuta) return null
+    if (!sinDatosSismos) return resultadoRuta.ruta
+    return { ...resultadoRuta.ruta, properties: { ...resultadoRuta.ruta.properties, nivelRiesgo: 'desconocido' } }
+  }, [resultadoRuta, sinDatosSismos])
 
   // Qué capas están prendidas. El satélite empieza apagado para cuidar datos y batería.
   const [capas, setCapas] = useState({
@@ -123,6 +145,7 @@ function Mapa() {
     <div className="pantalla-mapa">
       <header className="barra-superior">
         <h1>Mapa en vivo</h1>
+        <PanelEvacuacion {...evacuacion} />
         {totalSismos > 0 && (
           <p className="conteo">
             {totalSismos === 1 ? '1 sismo' : `${totalSismos} sismos`} en los últimos 7 días
@@ -248,6 +271,13 @@ function Mapa() {
           alRenovar={alRenovarBloqueo}
           alEliminar={alEliminarBloqueo}
           alConfirmar={alConfirmarBloqueo}
+        />
+        {/* La ruta va al final para quedar encima de todo (también al cambiar de tema) */}
+        <CapaRutasEvacuacion
+          mapa={mapa}
+          ruta={rutaParaMapa}
+          origen={resultadoRuta ? evacuacion.origen : null}
+          destino={resultadoRuta?.puntoReunion.coordenadas ?? null}
         />
         <PanelCapas capas={capas} alCambiar={cambiarCapa} />
         <Link to="/reportar" className="boton-reportar">
