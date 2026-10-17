@@ -220,3 +220,47 @@
   font-size: 1.75rem;
   line-height: 1;
 }
+
+/* Botones dentro del popup de un bloqueo (Renovar, Eliminar) */
+.popup-botones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.popup-boton {
+  flex: 1 1 auto;
+  min-height: 48px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 8px;
+  background-color: #1d4ed8;
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.popup-boton-peligro {
+  background-color: #b91c1c;
+}
+
+.popup-boton:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.popup-boton:focus-visible {
+  outline: 3px solid #111827;
+  outline-offset: 2px;
+}
+
+.popup-error {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.popup-error:empty {
+  display: none;
+}

@@ -27,3 +27,19 @@ describe('PanelCapas', () => {
     expect(alCambiar).toHaveBeenCalledWith('sismos', false)
   })
 })
+
+describe('PanelCapas: refugios y bloqueos', () => {
+  it('incluye Refugios y Bloqueos', () => {
+    const alCambiar = vi.fn()
+    render(
+      <PanelCapas
+        capas={{ sismos: true, ciclones: true, satelite: false, refugios: true, bloqueos: true }}
+        alCambiar={alCambiar}
+      />,
+    )
+
+    expect(screen.getByRole('checkbox', { name: 'Refugios' })).toBeChecked()
+    screen.getByRole('checkbox', { name: 'Bloqueos' }).click()
+    expect(alCambiar).toHaveBeenCalledWith('bloqueos', false)
+  })
+})
