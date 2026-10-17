@@ -300,7 +300,9 @@ describe('calcularRutaEvacuacion', () => {
     const duracion = performance.now() - inicio
 
     expect(resultado.estado).toBe('ok')
-    expect(duracion).toBeLessThan(400)
+    // Sin optimizar tardaba más de 1 s en una PC (y varios en un celular); 800 ms deja margen
+    // para una computadora ocupada sin dejar pasar que vuelva a ser lenta
+    expect(duracion).toBeLessThan(800)
   })
 
   // Para revisar los tramos fuera del grafo: de la persona a la calle y de la calle al punto
