@@ -369,3 +369,34 @@
   Si Overpass no responde, avisa al usuario en lugar de inventar datos.
 - [ ] **Paso 6: Commit:** `feat: ruta de evacuación a pie en el mapa en vivo`
 - [ ] **Paso 7: Revisión por subagente** y correcciones. Después va la revisión final de toda la rama.
+
+---
+
+### Tarea 10 (actualizada el 2026-10-16, después de fusionar la etapa 3)
+
+La etapa 3 ya trajo bloqueos y refugios reales (Supabase), React Router y un `Mapa.jsx` nuevo. Esta versión reemplaza la tarea 10 de arriba. Se trabaja directo en `main`, por decisión del usuario.
+
+**Datos que ahora existen:**
+- `useBloqueos()` entrega `bloqueos`, un FeatureCollection de `Point` en `[lon, lat]` con `properties.tipo` igual a `'total'` o `'solo_vehiculos'`, y ya sin los vencidos.
+- `useRefugios()` entrega `refugios`, un FeatureCollection de `Point` con `properties.estado` igual a `'abierto'`, `'lleno'` o `'cerrado'`.
+
+**10a. `useRutaEvacuacion({ sismos, bloqueos, refugios })`:**
+- Los refugios con `estado === 'abierto'` se suman como destinos, junto con los puntos de reunión de OSM. Cada refugio se pega al nodo de calle más cercano (≤ 300 m) y su posición real se revisa igual que la de los puntos.
+- Los refugios `lleno` y `cerrado` se descartan, como pide `CLAUDE.md`.
+- `resultado.puntoReunion` incluye `tipo: 'refugio' | 'punto-reunion'`.
+- **Bloqueos sin confirmar:** todos los bloqueos vigentes cuentan, confirmados o no. Ante la duda no se pasa.
+
+**10b. `PanelEvacuacion`:** un texto por cada estado y motivo. Además:
+- si `sinDatosSismos`, avisa "riesgo sísmico desconocido" y no dice "riesgo bajo";
+- el riesgo siempre va con palabras;
+- muestra de cuándo son la zona guardada y la ubicación;
+- con `ubicacion-imprecisa`, muestra el margen en metros;
+- todo estado sin ruta termina con "Sigue las indicaciones de Protección Civil".
+
+**10c. `Mapa.jsx`:**
+- Los bloqueos y refugios que se pasan a la ruta deben ser estables (`useMemo`).
+- `<CapaRutasEvacuacion>` va **al final**, para quedar encima.
+- Si `sinDatosSismos`, la ruta se dibuja gris (`nivelRiesgo: 'desconocido'`).
+- `CLAUDE.md` agrega la fila de Overpass y la nota de la ruta a pie sin conexión.
+
+**10d.** Verificación en navegador con la geolocalización simulada y Overpass real. Después, la revisión por subagente (es lógica de rutas).
