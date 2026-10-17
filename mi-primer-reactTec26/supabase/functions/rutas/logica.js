@@ -35,6 +35,8 @@ export const RADIO_CORTE_KM = 1.5
 export const MARGEN_ANTES_DEL_OBSTACULO_KM = 0.03
 // Si ORS empieza el tramo a pie más lejos que esto de donde terminó el carro, no sirve
 export const HUECO_MAXIMO_TRANSBORDO_KM = 0.05
+// Si el carro avanza menos que esto, conviene la ruta a pie desde el principio
+export const TRAMO_CARRO_MINIMO_M = 150
 export const INSTRUCCION_TRANSBORDO = 'Bájate del vehículo aquí y sigue a pie'
 
 const RADIO_TIERRA_KM = 6371.0088
@@ -307,28 +309,41 @@ export async function planificarRuta({ origen, modo, refugios, bloqueos, zonas, 
   const directa = await planificarRutaDirecta({ origen, modo, refugios, bloqueos, zonas, pedirMatriz, pedirRuta })
   registrar({ paso: 'directa', modo, estado: directa.estado, motivo: directa.motivo ?? null })
 
-  // Etapa 5: en carro, si el vehículo no llega a ningún refugio, se cambia de transporte:
-  // 1. en carro hasta donde se pueda y de ahí a pie (ruta combinada);
-  // 2. si no sale, la ruta a pie desde donde está la persona (a pie los bloqueos parciales se cruzan).
+  // Etapa 5: en carro, si el vehículo no llega a ningún refugio, se cambia de transporte.
+  // Se calculan AL MISMO TIEMPO (para que ninguna se quede sin tiempo):
+  // - la ruta combinada: en carro hasta donde se pueda y de ahí a pie;
+  // - la ruta a pie desde donde está la persona (a pie los bloqueos parciales se cruzan).
+  // Gana la combinada si el carro avanza de verdad; si no, la ruta a pie.
   const sinCaminoEnCarro = modo === 'carro' && directa.estado === 'sin-ruta' && directa.motivo !== 'sin-refugios'
   if (!sinCaminoEnCarro || !pedirIsocrona) return directa
 
-  try {
-    const combinada = await planificarRutaCombinada({ origen, refugios, bloqueos, zonas, pedirMatriz, pedirRuta, pedirIsocrona, registrar })
-    registrar({ paso: 'combinada', estado: combinada ? 'ruta' : 'sin-ruta' })
-    if (combinada) return combinada
-  } catch (error) {
-    registrar({ paso: 'combinada', error: error?.codigo ?? String(error?.message ?? error) })
-  }
+  const [combinada, aPie] = await Promise.allSettled([
+    planificarRutaCombinada({ origen, refugios, bloqueos, zonas, pedirMatriz, pedirRuta, pedirIsocrona, registrar }),
+    planificarRutaDirecta({ origen, modo: 'a_pie', refugios, bloqueos, zonas, pedirMatriz, pedirRuta }),
+  ])
+  registrar({ paso: 'combinada', ...resumenDeIntento(combinada) })
+  registrar({ paso: 'a-pie', ...resumenDeIntento(aPie) })
 
-  try {
-    const aPie = await planificarRutaDirecta({ origen, modo: 'a_pie', refugios, bloqueos, zonas, pedirMatriz, pedirRuta })
-    registrar({ paso: 'a-pie', estado: aPie.estado, motivo: aPie.motivo ?? null })
-    if (aPie.estado === 'ruta') return { ...aPie, sinPasoEnCarro: true }
-  } catch (error) {
-    registrar({ paso: 'a-pie', error: error?.codigo ?? String(error?.message ?? error) })
-  }
+  const rutaCombinada = combinada.status === 'fulfilled' ? combinada.value : null
+  if (rutaCombinada && rutaCombinada.tramos.carro.distanciaM >= TRAMO_CARRO_MINIMO_M) return rutaCombinada
+  if (aPie.status === 'fulfilled' && aPie.value.estado === 'ruta') return { ...aPie.value, sinPasoEnCarro: true }
+  // Un tramo en carro muy corto es mejor que nada si a pie no salió
+  if (rutaCombinada) return rutaCombinada
+  // Si ORS falló (límite, caída, se acabó el tiempo), la causa NO son los bloqueos: se
+  // informa el error para que la app diga "No se pudo calcular la ruta" y no "cierran el paso"
+  if (aPie.status === 'rejected') throw aPie.reason
   return directa
+}
+
+// Para el registro: cómo terminó un intento (sin coordenadas)
+function resumenDeIntento(intento) {
+  if (intento.status === 'rejected') {
+    const error = intento.reason
+    if (error instanceof ErrorRutas) return { error: error.codigo }
+    return { error: String(error?.message ?? error), detalle: String(error?.stack ?? '') }
+  }
+  const valor = intento.value
+  return { estado: valor?.estado ?? 'sin-ruta', motivo: valor?.motivo ?? null }
 }
 
 // La ruta normal: un solo tramo, a pie o en carro, al refugio al que se llega más rápido
@@ -477,7 +492,7 @@ async function sinTumbarLasDemas(promesa, registrar, paso, vacio) {
   try {
     return await promesa
   } catch (error) {
-    registrar({ paso, error: error?.codigo ?? String(error?.message ?? error) })
+    registrar({ paso, error: error?.codigo ?? String(error?.message ?? error), detalle: error?.codigo ? undefined : String(error?.stack ?? '') })
     return vacio
   }
 }

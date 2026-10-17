@@ -538,7 +538,8 @@ describe('ruta combinada: correcciones de la revisión', () => {
       origen: ORIGEN, modo: 'carro', refugios, bloqueos: [], zonas: [], pedirMatriz, pedirRuta, pedirIsocrona: async () => isocrona,
     })
     // La combinada se descarta; queda la ruta a pie desde donde está la persona
-    expect(resultado.modo).not.toBe('combinada')
+    expect(resultado.modo).toBe('a_pie')
+    expect(resultado.sinPasoEnCarro).toBe(true)
   })
 
   it('el tramo en carro no termina con "Llegaste": sigue la instrucción de bajarse', async () => {
@@ -653,5 +654,84 @@ describe('si en carro no hay paso, se cambia de transporte', () => {
     })
     const eventos = registrar.mock.calls.map(([evento]) => evento.paso)
     expect(eventos).toEqual(expect.arrayContaining(['directa', 'combinada', 'a-pie']))
+  })
+})
+
+describe('cambio de transporte: correcciones de la revisión', () => {
+  const REFUGIO = [-103.30, 20.67]
+  const refugios = [refugio(1, ...REFUGIO)]
+  const isocrona = {
+    type: 'Polygon',
+    coordinates: [
+      Array.from({ length: 49 }, (_, k) => {
+        const angulo = ((k % 48) / 48) * 2 * Math.PI
+        return [REFUGIO[0] + 0.008 * Math.cos(angulo), REFUGIO[1] + 0.008 * Math.sin(angulo)]
+      }),
+    ],
+  }
+  const recta = (origen, destino, segundosPorKm) =>
+    rutaOrs([origen, destino], distanciaKm(origen, destino) * segundosPorKm, distanciaKm(origen, destino) * 1000)
+  const matriz = async (perfil, puntos) => {
+    const [desde, ...hacia] = puntos
+    return hacia.map((p) => distanciaKm(desde, p) * (perfil === 'driving-car' ? 90 : 720))
+  }
+  const evita = (avoid, punto) => (avoid?.coordinates ?? []).some(([anillo]) => puntoEnAnillo(punto, anillo))
+
+  // Si ORS falla (o se acaba el tiempo) en la ruta a pie, la causa NO son los bloqueos
+  it('si ORS falla en la ruta a pie de respaldo, se informa el error, no "cierran el paso"', async () => {
+    const pedirRuta = vi.fn(async (perfil) => {
+      throw new ErrorRutas(perfil === 'driving-car' ? 'SIN_RUTA' : 'ORS_ERROR')
+    })
+    await expect(
+      planificarRuta({
+        origen: ORIGEN, modo: 'carro', refugios, bloqueos: [], zonas: [], pedirMatriz: matriz, pedirRuta, pedirIsocrona: async () => isocrona,
+      }),
+    ).rejects.toMatchObject({ codigo: 'ORS_ERROR' })
+  })
+
+  // La ruta a pie se calcula AL MISMO TIEMPO que la combinada (no al final, cuando
+  // ya no queda tiempo): la isócrona no responde hasta que se pidió la ruta a pie
+  it('la ruta a pie de respaldo se pide al mismo tiempo que la combinada', async () => {
+    let avisarAPie
+    const yaSePidioAPie = new Promise((resolver) => {
+      avisarAPie = resolver
+    })
+    const pedirMatriz = vi.fn(async (perfil, puntos) => {
+      if (perfil === 'foot-walking' && puntos[0] === ORIGEN) avisarAPie()
+      return matriz(perfil, puntos)
+    })
+    const pedirRuta = vi.fn(async (perfil, origen, destino) => {
+      if (perfil === 'driving-car') throw new ErrorRutas('SIN_RUTA')
+      return recta(origen, destino, 720)
+    })
+    const resultado = await planificarRuta({
+      origen: ORIGEN, modo: 'carro', refugios, bloqueos: [], zonas: [], pedirMatriz, pedirRuta,
+      pedirIsocrona: async () => {
+        await yaSePidioAPie
+        return isocrona
+      },
+    })
+    expect(resultado.modo).toBe('a_pie')
+  })
+
+  // Bloqueo parcial a ~90 m de la persona en la única calle: "bajarse a 35 m" no ayuda
+  it('si el carro apenas avanza, se da la ruta a pie en lugar de una combinada', async () => {
+    const BLOQUEO = [ORIGEN[0] + 0.00087, ORIGEN[1]]
+    const pedirRuta = vi.fn(async (perfil, origen, destino, avoid) => {
+      if (perfil === 'driving-car' && destino[0] > BLOQUEO[0] && evita(avoid, BLOQUEO)) throw new ErrorRutas('SIN_RUTA')
+      return recta(origen, destino, perfil === 'driving-car' ? 90 : 720)
+    })
+    const resultado = await planificarRuta({
+      origen: ORIGEN,
+      modo: 'carro',
+      refugios,
+      bloqueos: [bloqueo(3, 'solo_vehiculos', ...BLOQUEO)],
+      zonas: [],
+      pedirMatriz: matriz,
+      pedirRuta,
+      pedirIsocrona: async () => isocrona,
+    })
+    expect(resultado.modo).toBe('a_pie')
+    expect(resultado.sinPasoEnCarro).toBe(true)
   })
 })

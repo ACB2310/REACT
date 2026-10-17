@@ -88,6 +88,7 @@ function PanelRuta({ ruta, evacuacion, modo, alCambiarModo, sinDatosBloqueos }) 
           <p>
             En carro no hay paso a ningún refugio cercano. Esta es la ruta a pie (a pie sí se pasan los bloqueos parciales).
           </p>
+          <p>Deja el carro en un lugar seguro, sin bloquear el paso.</p>
         </div>
       )}
 

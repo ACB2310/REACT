@@ -80,6 +80,7 @@ describe('PanelRuta', () => {
     expect(
       screen.getByText('En carro no hay paso a ningún refugio cercano. Esta es la ruta a pie (a pie sí se pasan los bloqueos parciales).'),
     ).toBeInTheDocument()
+    expect(screen.getByText('Deja el carro en un lugar seguro, sin bloquear el paso.')).toBeInTheDocument()
     expect(screen.getByText('Refugio Escuela Juárez: 12 min a pie · 4.3 km')).toBeInTheDocument()
   })
 
