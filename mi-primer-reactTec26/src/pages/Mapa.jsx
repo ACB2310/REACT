@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import MapaBase from '../components/MapaBase.jsx'
 import CapaSismos from '../components/CapaSismos.jsx'
 import CapaCiclones from '../components/CapaCiclones.jsx'
@@ -11,6 +11,8 @@ import PanelCapas from '../components/PanelCapas.jsx'
 import CapaRefugios from '../components/CapaRefugios.jsx'
 import CapaBloqueos from '../components/CapaBloqueos.jsx'
 import LeyendaRefugiosBloqueos from '../components/LeyendaRefugiosBloqueos.jsx'
+import CapaIncidentes from '../components/CapaIncidentes.jsx'
+import LeyendaBrigadas from '../components/LeyendaBrigadas.jsx'
 import PanelEvacuacion from '../components/PanelEvacuacion.jsx'
 import CapaRutasEvacuacion from '../components/CapaRutasEvacuacion.jsx'
 import { useSismos } from '../hooks/useSismos.js'
@@ -19,6 +21,7 @@ import { useSatelite } from '../hooks/useSatelite.js'
 import { useRefugios } from '../hooks/useRefugios.js'
 import { useBloqueos } from '../hooks/useBloqueos.js'
 import { useSesion } from '../hooks/useSesion.js'
+import { useIncidentes } from '../hooks/useBrigadas.js'
 import { useRutaEvacuacion } from '../hooks/useRutaEvacuacion.js'
 import { renovarBloqueo, eliminarBloqueo, confirmarBloqueo } from '../services/bloqueos.js'
 import { formatearFechaHora } from '../utils/fechas.js'
@@ -70,6 +73,10 @@ function Mapa() {
   const refugios = useRefugios()
   const bloqueos = useBloqueos()
   const { rol, configurado: supabaseConfigurado } = useSesion()
+  const navegar = useNavigate()
+  // Brigadistas y coordinadores ven además los incidentes (los ciudadanos no)
+  const esPersonal = rol === 'brigadista' || rol === 'coordinador'
+  const incidentes = useIncidentes(esPersonal)
 
   // Ruta a pie al punto de reunión o refugio más seguro. Los bloqueos se pasan como un
   // arreglo ESTABLE (solo cambia cuando cambian los bloqueos), para no recalcular en cada render.
@@ -94,6 +101,7 @@ function Mapa() {
     satelite: false,
     refugios: true,
     bloqueos: true,
+    incidentes: true,
   })
   const satelite = useSatelite(capas.satelite)
 
@@ -110,6 +118,10 @@ function Mapa() {
   async function alConfirmarBloqueo(id) {
     await confirmarBloqueo(id)
     bloqueos.recargar({ silencioso: true })
+  }
+  // El coordinador convierte un bloqueo en incidente en el panel de brigadas
+  function alCrearIncidente(id, [longitud, latitud]) {
+    navegar(`/brigadas?bloqueo=${id}&lng=${longitud}&lat=${latitud}`)
   }
 
   // El mapa de MapLibre llega cuando termina de cargar (ver MapaBase)
@@ -271,7 +283,9 @@ function Mapa() {
           alRenovar={alRenovarBloqueo}
           alEliminar={alEliminarBloqueo}
           alConfirmar={alConfirmarBloqueo}
+          alCrearIncidente={alCrearIncidente}
         />
+        {esPersonal && <CapaIncidentes mapa={mapa} incidentes={incidentes.incidentes} visible={capas.incidentes} />}
         {/* La ruta va al final para quedar encima de todo (también al cambiar de tema) */}
         <CapaRutasEvacuacion
           mapa={mapa}
@@ -279,7 +293,7 @@ function Mapa() {
           origen={resultadoRuta ? evacuacion.origen : null}
           destino={resultadoRuta?.puntoReunion.coordenadas ?? null}
         />
-        <PanelCapas capas={capas} alCambiar={cambiarCapa} />
+        <PanelCapas capas={capas} alCambiar={cambiarCapa} extras={esPersonal ? ['incidentes'] : []} />
         <Link to="/reportar" className="boton-reportar">
           Reportar bloqueo
         </Link>
@@ -291,6 +305,7 @@ function Mapa() {
           <LeyendaMagnitud />
           <LeyendaCiclones />
           <LeyendaRefugiosBloqueos />
+          {esPersonal && <LeyendaBrigadas />}
         </details>
         <p className="fuente">Sismos: USGS · {horaDeFuente(sismos)}</p>
         <p className="fuente">

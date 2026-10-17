@@ -46,7 +46,8 @@ Ejecuta `npm run lint` y `npm run build` antes de dar una tarea por terminada.
 
 ```
 src/
-  pages/         Pantallas: Mapa, Refugios, ReportarBloqueo, PanelBrigadas
+  pages/         Pantallas: Mapa, ReportarBloqueo, IniciarSesion, AdministrarRefugios,
+                 PanelBrigadas, GestionBrigadas, MiBrigada
   components/    Componentes reutilizables: MapaBase, CapaSismos, CapaHuracanes, RutaCombinada
   services/      Llamadas a APIs y a Supabase (usgs.js, gdacs.js, rutas.js, supabase.js)
   utils/         Funciones puras (geo.js con Turf, formatos de fecha, etc.)
@@ -91,11 +92,12 @@ Toda geometría se maneja en **GeoJSON con coordenadas `[longitud, latitud]`** (
 
 ## Modelo de datos (Supabase / PostGIS)
 
-- **perfiles**: `id` (= `auth.users.id`), `nombre`, `rol` (`ciudadano` | `brigadista` | `coordinador`), `creado_en`. Solo para cuentas con correo; los anónimos no tienen perfil y cuentan como ciudadano (`rol_actual()`).
+- **perfiles**: `id` (= `auth.users.id`), `nombre`, `rol` (`ciudadano` | `brigadista` | `coordinador`), `brigada_id` (a qué brigada pertenece un brigadista), `creado_en`. Solo para cuentas con correo; los anónimos no tienen perfil y cuentan como ciudadano (`rol_actual()`).
 - **refugios**: `id`, `clave_oficial`, `nombre`, `direccion`, `municipio`, `entidad`, `ubicacion geography(Point)` (puede ser nula hasta que el coordinador lo ubique), `capacidad`, `ocupacion`, `estado` (`abierto` | `lleno` | `cerrado`), `fuente`, `actualizado_en`.
 - **bloqueos**: `id`, `geometria geography(Point)`, `tipo` (`solo_vehiculos` | `total`), `descripcion` (máx. 280), `reportado_por`, `es_anonimo`, `confirmado`, `expira_en`, `renovado_en`, `creado_en`.
-- **incidentes**: `id`, `ubicacion geography(Point)`, `tipo`, `prioridad` (1–5), `estado`, `creado_en`.
-- **brigadas**: `id`, `nombre`, `vehiculo`, `ubicacion_actual geography(Point)`, `incidente_id`, `estado`.
+- **incidentes**: `id`, `ubicacion geography(Point)`, `tipo` (`rescate` | `atencion_medica` | `incendio` | `derrumbe` | `inundacion` | `bloqueo` | `otro`), `prioridad` (**1 = la más urgente**, 5 = la menos), `descripcion` (máx. 500), `estado` (`pendiente` | `asignado` | `en_atencion` | `atendido` | `cancelado`), `bloqueo_id`, `creado_por`, `creado_en`, `actualizado_en`.
+- **brigadas**: `id`, `nombre` (único), `vehiculo`, `base geography(Point)` (**base fija**, no se rastrea a nadie), `estado` (`disponible` | `asignada` | `en_camino` | `en_sitio` | `fuera_de_servicio`), `incidente_id` (único), `actualizado_en`.
+- **asignaciones** (historial): `incidente_id`, `brigada_id`, `asignado_por`, `asignado_en`, `terminado_en`, `resultado` (`atendido` | `liberada` | `cancelado`).
 - **zonas_peligro**: `id`, `geometria geography(Polygon)`, `origen` (`nhc` | `gdacs` | `sismo` | `inundacion` | `manual`), `severidad`, `expira_en`.
 
 Crea **índices GIST** en todas las columnas geográficas. Los cambios de esquema van como migraciones en `supabase/migrations/` (se aplican pegándolas en el SQL Editor, en orden). Después de cambiar políticas, corre `supabase/pruebas/verificar_rls.sql`.
@@ -108,6 +110,14 @@ Seguridad de los bloqueos (migración 4, 2026-10-17) — **no deshacer sin revis
 - `reportado_por` **no se puede leer** en la tabla (permisos por columna) ni llega por tiempo real. "Es mío" sale de `ids_bloqueos_mios()`. **No** hagas `grant select on all tables` ni vuelvas a publicar `bloqueos` en Realtime desde el panel.
 - Los avisos de cambios van por el canal **privado** `bloqueos-cambios` (`realtime.send`); nadie puede enviar desde la app. La app recarga como máximo una vez cada 5 s.
 - En el proyecto real: activar **CAPTCHA** para sesiones anónimas y bajar su límite de creación por IP.
+
+Decisiones de la etapa 6 (2026-10-17), migración 5:
+- **Solo el coordinador crea incidentes** (tocando el mapa o con "Crear incidente" desde el popup de un bloqueo).
+- **Asignación sugerida y confirmada**: `src/utils/asignacion.js` propone la brigada **disponible** más cercana a cada incidente, del más urgente al menos urgente, sin repetir brigadas; el coordinador acepta o cambia. "Más cercana" es **línea recta** hasta que exista la etapa 4 (ORS); entonces se cambia por tiempo de llegada.
+- **Sin duplicidades**: una brigada atiende un incidente a la vez y un incidente tiene una brigada a la vez (índices únicos + bloqueo de renglones en las RPC, en orden incidente → brigada). Al crear, la app avisa si hay uno abierto del mismo tipo a ≤ 150 m.
+- **Brigadistas**: pertenecen a una brigada (`perfiles.brigada_id`) y avanzan su asignación solo en orden: `asignada → en_camino → en_sitio → terminado` (`avanzar_asignacion`).
+- **Los ciudadanos no ven incidentes ni brigadas** (pueden traer datos sensibles). Tiempo real por el canal privado `brigadas-cambios`, solo para brigadistas y coordinadores.
+- Escrituras solo por RPC: `crear_incidente`, `actualizar_incidente`, `cancelar_incidente`, `asignar_brigada`, `liberar_brigada`, `guardar_brigada`, `cambiar_servicio_brigada`, `asignar_miembro`, `avanzar_asignacion`. Lecturas: `incidentes_vista`, `brigadas_vista`, `mi_asignacion()`, `brigadistas()`. Verificación: `supabase/pruebas/verificar_brigadas.sql`.
 
 Decisiones de la etapa 3 (2026-10-16):
 - **Cualquiera puede reportar**, con o sin cuenta. Sin cuenta se usa la sesión **anónima** de Supabase, que se crea solo al enviar el primer reporte. Límite: 5 reportes por hora por sesión.
@@ -152,7 +162,7 @@ Decisiones de la etapa 3 (2026-10-16):
 3. Supabase: tablas de refugios y bloqueos, y pantalla para reportar bloqueos tocando el mapa. ✅ ← siguiente: 4
 4. Ruta al refugio más cercano con OpenRouteService evitando bloqueos y zonas de peligro.
 5. Ruta combinada carro + a pie.
-6. Panel de brigadas: asignación de equipos a incidentes por prioridad.
+6. Panel de brigadas: asignación de equipos a incidentes por prioridad. ✅
 7. PWA offline, notificaciones push y app con Capacitor.
 8. Detección automática de zonas inundadas (Copernicus Global Flood Monitoring) y reconocimiento con drones.
 

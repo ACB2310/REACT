@@ -41,7 +41,7 @@ function crearBoton({ texto, textoTrabajando, clase, accion, popup, zonaError })
 
 // Contenido del popup de un bloqueo. Todo con textContent: la descripción la
 // escribe cualquier persona y nunca se interpreta como HTML.
-function crearContenidoPopup(bloqueo, { rol, alRenovar, alEliminar, alConfirmar, popup }) {
+function crearContenidoPopup(bloqueo, { rol, alRenovar, alEliminar, alConfirmar, alCrearIncidente, popup }) {
   const p = bloqueo.properties
   const tipo = TIPOS_BLOQUEO[p.tipo] ?? TIPOS_BLOQUEO.total
   const contenido = document.createElement('div')
@@ -98,6 +98,19 @@ function crearContenidoPopup(bloqueo, { rol, alRenovar, alEliminar, alConfirmar,
         }),
       )
     }
+    // El coordinador puede convertir el bloqueo en un incidente para mandar una brigada
+    if (rol === 'coordinador' && alCrearIncidente) {
+      botones.append(
+        crearBoton({
+          texto: 'Crear incidente',
+          textoTrabajando: 'Abriendo…',
+          clase: 'popup-boton',
+          accion: () => alCrearIncidente(p.id, bloqueo.geometry.coordinates),
+          popup,
+          zonaError,
+        }),
+      )
+    }
     contenido.append(botones, zonaError)
   }
   return contenido
@@ -106,14 +119,15 @@ function crearContenidoPopup(bloqueo, { rol, alRenovar, alEliminar, alConfirmar,
 // Dibuja los bloqueos vigentes: rojo si es total y naranja si es parcial.
 // Va encima de las demás capas porque es lo más urgente para moverse.
 // `alRenovar(id)`, `alEliminar(id)` y `alConfirmar(id)` devuelven una promesa (ver Mapa.jsx).
-function CapaBloqueos({ mapa, bloqueos, visible = true, rol = 'ciudadano', alRenovar, alEliminar, alConfirmar }) {
+// `alCrearIncidente(id, [longitud, latitud])` lleva al panel de brigadas (solo coordinador).
+function CapaBloqueos({ mapa, bloqueos, visible = true, rol = 'ciudadano', alRenovar, alEliminar, alConfirmar, alCrearIncidente }) {
   function alHacerClic(evento) {
     const bloqueo = evento.features?.[0]
     if (!bloqueo) return
     const popup = new Popup({ maxWidth: '300px' })
     popup
       .setLngLat(bloqueo.geometry.coordinates)
-      .setDOMContent(crearContenidoPopup(bloqueo, { rol, alRenovar, alEliminar, alConfirmar, popup }))
+      .setDOMContent(crearContenidoPopup(bloqueo, { rol, alRenovar, alEliminar, alConfirmar, alCrearIncidente, popup }))
       .addTo(mapa)
   }
 

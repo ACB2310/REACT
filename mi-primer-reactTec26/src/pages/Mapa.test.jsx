@@ -8,6 +8,7 @@ import { useSatelite } from '../hooks/useSatelite.js'
 import { useRefugios } from '../hooks/useRefugios.js'
 import { useBloqueos } from '../hooks/useBloqueos.js'
 import { useSesion } from '../hooks/useSesion.js'
+import { useIncidentes } from '../hooks/useBrigadas.js'
 import { useRutaEvacuacion } from '../hooks/useRutaEvacuacion.js'
 import { simularSupabaseListo } from '../test/simularSupabase.js'
 import { renovarBloqueo, eliminarBloqueo } from '../services/bloqueos.js'
@@ -52,6 +53,10 @@ vi.mock('../components/CapaSatelite.jsx', () => ({ default: (props) => ((capas.s
 vi.mock('../components/CapaRefugios.jsx', () => ({ default: (props) => ((capas.refugios = props), null) }))
 vi.mock('../components/CapaBloqueos.jsx', () => ({
   default: (props) => ((capas.bloqueos = props), ordenRender.push('bloqueos'), null),
+}))
+vi.mock('../components/CapaIncidentes.jsx', () => ({ default: (props) => ((capas.incidentes = props), null) }))
+vi.mock('../hooks/useBrigadas.js', () => ({
+  useIncidentes: vi.fn(() => ({ incidentes: null, estado: 'listo', recargar: () => {} })),
 }))
 vi.mock('../components/CapaRutasEvacuacion.jsx', () => ({
   default: (props) => ((capas.ruta = props), ordenRender.push('ruta'), null),
@@ -589,4 +594,37 @@ describe('Página Mapa', () => {
     })
   })
 
+})
+
+describe('Página Mapa: incidentes (etapa 6)', () => {
+  const INCIDENTES = { type: 'FeatureCollection', features: [] }
+
+  beforeEach(() => {
+    delete capas.incidentes
+    useIncidentes.mockReset().mockReturnValue({ incidentes: INCIDENTES, estado: 'listo', recargar: vi.fn() })
+    simularSismos({ estado: 'listo', sismos: dosSismos, actualizadoEn: 1700000000000 })
+    simularCiclones()
+    simularSatelite()
+  })
+
+  it('un ciudadano no pide ni ve incidentes', () => {
+    simularSupabaseListo({ useRefugios, useBloqueos, useSesion })
+    render(<Mapa />, { wrapper: MemoryRouter })
+
+    expect(useIncidentes).toHaveBeenCalledWith(false)
+    expect(capas.incidentes).toBeUndefined()
+    expect(screen.queryByRole('checkbox', { name: 'Incidentes' })).toBeNull()
+  })
+
+  it('brigadistas y coordinadores ven la capa de incidentes y la pueden apagar', () => {
+    simularSupabaseListo({ useRefugios, useBloqueos, useSesion }, { sesion: { rol: 'coordinador' } })
+    render(<Mapa />, { wrapper: MemoryRouter })
+
+    expect(useIncidentes).toHaveBeenCalledWith(true)
+    expect(capas.incidentes.incidentes).toBe(INCIDENTES)
+    expect(capas.bloqueos.alCrearIncidente).toEqual(expect.any(Function))
+
+    act(() => screen.getByRole('checkbox', { name: 'Incidentes' }).click())
+    expect(capas.incidentes.visible).toBe(false)
+  })
 })

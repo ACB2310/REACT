@@ -33,6 +33,8 @@ refugios y bloqueos no están disponibles.
    Termina a propósito con `ERROR: RESULTADO: 18 de 18 casos OK` y no deja datos guardados.
 6. Importa la lista oficial de refugios: ver `supabase/plantillas/LEEME.md`.
 7. Asigna roles (brigadista, coordinador): ver `supabase/pruebas/LEEME.md`.
+8. Etapa 6 (brigadas): la migración `20261017000005_brigadas.sql` se aplica igual que las demás.
+   Después corre `supabase/pruebas/verificar_brigadas.sql`; debe terminar con `RESULTADO: 34 de 34 casos OK`.
 
 ## Pantallas
 
@@ -41,5 +43,11 @@ refugios y bloqueos no están disponibles.
 - **Entrar**: cuenta con correo y contraseña (para brigadistas y coordinadores).
 - **Refugios** (solo coordinador): ubicar en el mapa los refugios de la lista oficial y
   actualizar su estado y ocupación.
+- **Brigadas** (solo coordinador): crear incidentes y asignar brigadas por prioridad. La app
+  sugiere la brigada disponible más cercana y el coordinador confirma con un toque.
+- **Brigadas y miembros** (solo coordinador): registrar brigadas con su base fija y meter a
+  las cuentas de brigadista en cada una.
+- **Mi brigada** (brigadista): ver el incidente asignado y avisar el avance
+  (Voy en camino → Llegué al lugar → Terminé).
 
 Más detalles del proyecto y reglas para contribuir: `CLAUDE.md`.
