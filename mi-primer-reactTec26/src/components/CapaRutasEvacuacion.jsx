@@ -45,8 +45,15 @@ function CapaRutasEvacuacion({ mapa, ruta: rutaRecibida, origen, destino }) {
         source: 'evacuacion-ruta',
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
-          // Verde = riesgo bajo, ámbar = medio, rojo = alto; gris si el riesgo no se conoce
-          'line-color': ['match', ['get', 'nivelRiesgo'], 'bajo', '#16a34a', 'medio', '#f59e0b', 'alto', '#dc2626', '#6b7280'],
+          // Ruta en línea de OpenRouteService (trae `modo`): azul a pie, morada en carro.
+          // Ruta sin conexión (Dijkstra): verde = riesgo bajo, ámbar = medio, rojo = alto;
+          // gris si el riesgo no se conoce.
+          'line-color': [
+            'case',
+            ['has', 'modo'],
+            ['match', ['get', 'modo'], 'carro', '#7c3aed', '#1d4ed8'],
+            ['match', ['get', 'nivelRiesgo'], 'bajo', '#16a34a', 'medio', '#f59e0b', 'alto', '#dc2626', '#6b7280'],
+          ],
           'line-width': 5,
         },
       },
