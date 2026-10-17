@@ -25,9 +25,9 @@ const INICIAL = { fase: 'inactivo', error: null, zona: null, origen: null, preci
 // - la posición real de cada punto de reunión y su tramo desde la última esquina.
 // Cualquiera de esos tramos dentro de un bloqueo total o del radio crítico de un sismo fuerte
 // se descarta, igual que una calle.
-function calcularConZona(zona, nodoOrigen, origen, sismos, bloqueos) {
+function calcularConZona(zona, destinos, nodoOrigen, origen, sismos, bloqueos) {
   try {
-    if (zona.puntosReunion.length === 0) return { estado: 'sin-puntos' }
+    if (destinos.length === 0) return { estado: 'sin-puntos' }
     if (nodoOrigen === null) return { estado: 'lejos-de-calles' }
 
     const sismosActivos = filtrarSismosActivos(sismos, Date.now())
@@ -40,7 +40,7 @@ function calcularConZona(zona, nodoOrigen, origen, sismos, bloqueos) {
     }
 
     // Se revisa cada punto por su posición real, no solo por la esquina a la que se pegó
-    const puntosSeguros = zona.puntosReunion.filter(
+    const puntosSeguros = destinos.filter(
       (p) => !bloqueado(p.coordenadas, p.coordenadas) && !bloqueado(coordenadasNodo(p.nodoId), p.coordenadas),
     )
     if (puntosSeguros.length === 0) return { estado: 'sin-ruta', motivo: 'refugios-inalcanzables' }
@@ -76,7 +76,7 @@ function calcularConZona(zona, nodoOrigen, origen, sismos, bloqueos) {
         distanciaM,
         distanciaKm: Math.round(distanciaM / 100) / 10,
         ruta: lineaCompleta,
-        puntoReunion: { nombre: punto.nombre, coordenadas: punto.coordenadas },
+        puntoReunion: { nombre: punto.nombre, coordenadas: punto.coordenadas, tipo: punto.tipo },
       },
     }
   } catch (e) {
@@ -87,13 +87,15 @@ function calcularConZona(zona, nodoOrigen, origen, sismos, bloqueos) {
 
 // Busca la ruta a pie más segura hacia un punto de reunión.
 // - sismos: FeatureCollection de USGS (se usan solo los de las últimas 72 h)
-// - bloqueos: Features de bloqueos (por ahora ninguno; llegarán con Supabase).
+// - refugios: FeatureCollection de refugios oficiales (Supabase); los "abierto" se suman
+//   como destinos junto con los puntos de reunión de OpenStreetMap
+// - bloqueos: Features de bloqueos (Supabase), con properties.tipo 'total' o 'solo_vehiculos'.
 //   Debe ser un arreglo ESTABLE (guardado en estado o con useMemo): si se crea uno nuevo
 //   en cada render, la ruta se recalcula en cada render y la pantalla se vuelve lenta.
 //
 // La ruta se vuelve a calcular sola si cambian los sismos o los bloqueos, usando la
 // zona ya descargada: así una ruta vieja nunca queda en pantalla pasando por un peligro nuevo.
-export function useRutaEvacuacion({ sismos, bloqueos = SIN_BLOQUEOS }) {
+export function useRutaEvacuacion({ sismos, bloqueos = SIN_BLOQUEOS, refugios = null }) {
   const [busqueda, setBusqueda] = useState(INICIAL)
 
   // Cada búsqueda tiene su número; si empieza otra, la anterior se ignora y se cancela
@@ -172,11 +174,34 @@ export function useRutaEvacuacion({ sismos, bloqueos = SIN_BLOQUEOS }) {
     }
   }, [busqueda])
 
-  // La ruta depende de la zona, del origen y de los sismos y bloqueos ACTUALES
+  // Destinos posibles: puntos de reunión de OSM y refugios oficiales ABIERTOS que queden
+  // a ≤ 300 m de una calle descargada (los llenos o cerrados no sirven para llegar)
+  const destinos = useMemo(() => {
+    if (busqueda.fase !== 'zona-lista') return null
+    const puntos = busqueda.zona.puntosReunion.map((p) => ({ ...p, tipo: 'punto-reunion' }))
+    const refugiosAbiertos = []
+    for (const refugio of refugios?.features ?? []) {
+      if (refugio?.properties?.estado !== 'abierto') continue
+      const [longitud, latitud] = refugio.geometry?.coordinates ?? []
+      if (!Number.isFinite(longitud) || !Number.isFinite(latitud)) continue
+      const nodoId = nodoMasCercano(busqueda.zona.grafo, [longitud, latitud])
+      if (nodoId === null) continue
+      refugiosAbiertos.push({
+        id: `refugio-${refugio.properties.id ?? refugio.id}`,
+        nombre: refugio.properties.nombre ?? 'Refugio',
+        coordenadas: [longitud, latitud],
+        nodoId,
+        tipo: 'refugio',
+      })
+    }
+    return [...puntos, ...refugiosAbiertos]
+  }, [busqueda, refugios])
+
+  // La ruta depende de la zona, del origen, de los destinos y de los sismos y bloqueos ACTUALES
   const calculo = useMemo(() => {
     if (busqueda.fase !== 'zona-lista') return null
-    return calcularConZona(busqueda.zona, nodoOrigen, busqueda.origen, sismos, bloqueos)
-  }, [busqueda, nodoOrigen, sismos, bloqueos])
+    return calcularConZona(busqueda.zona, destinos, nodoOrigen, busqueda.origen, sismos, bloqueos)
+  }, [busqueda, destinos, nodoOrigen, sismos, bloqueos])
 
   return {
     estado: calculo ? calculo.estado : busqueda.fase,

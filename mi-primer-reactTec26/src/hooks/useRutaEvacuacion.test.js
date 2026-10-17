@@ -414,6 +414,82 @@ describe('useRutaEvacuacion', () => {
     })
   })
 
+  // Tarea 10: los refugios oficiales (Supabase) también son destinos
+  describe('refugios de Supabase como destinos', () => {
+    // A ~10 m del nodo 2: más cerca de la persona que "Plaza Hidalgo" (nodo 3)
+    const refugio = (estado, coordenadas = [-100.3051, 25.6701]) => ({
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          id: 1,
+          geometry: { type: 'Point', coordinates: coordenadas },
+          properties: { id: 1, nombre: 'Refugio Escuela Juárez', estado, capacidad: 120, ocupacion: 40 },
+        },
+      ],
+    })
+
+    it('suma los refugios abiertos como destinos y elige el de menor costo', async () => {
+      const refugios = refugio('abierto')
+      const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA, refugios }))
+      await buscar(result)
+
+      expect(result.current.estado).toBe('listo')
+      expect(result.current.resultado.puntoReunion).toEqual({
+        nombre: 'Refugio Escuela Juárez',
+        coordenadas: [-100.3051, 25.6701],
+        tipo: 'refugio',
+      })
+    })
+
+    it('los puntos de reunión de OSM dicen su tipo', async () => {
+      const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA }))
+      await buscar(result)
+      expect(result.current.resultado.puntoReunion.tipo).toBe('punto-reunion')
+    })
+
+    it('descarta refugios llenos o cerrados', async () => {
+      for (const estado of ['lleno', 'cerrado']) {
+        const refugios = refugio(estado)
+        const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA, refugios }))
+        await buscar(result)
+        expect(result.current.resultado.puntoReunion.nombre).toBe('Plaza Hidalgo')
+      }
+    })
+
+    it('un refugio lejos de las calles descargadas no se usa', async () => {
+      const refugios = refugio('abierto', [-100.25, 25.7])
+      const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA, refugios }))
+      await buscar(result)
+      expect(result.current.resultado.puntoReunion.nombre).toBe('Plaza Hidalgo')
+    })
+
+    it('con solo un refugio abierto y sin puntos de reunión de OSM igual hay ruta', async () => {
+      const soloCalles = elementosOverpassEjemplo.filter((e) => e.type === 'way')
+      obtenerCallesYPuntosReunion.mockResolvedValue({ elementos: soloCalles, descargadoEn: Date.now() })
+      const refugios = refugio('abierto')
+      const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA, refugios }))
+      await buscar(result)
+
+      expect(result.current.estado).toBe('listo')
+      expect(result.current.resultado.puntoReunion.tipo).toBe('refugio')
+    })
+
+    it('un refugio dentro de un bloqueo total no se ofrece', async () => {
+      const refugios = refugio('abierto')
+      const bloqueoSobreRefugio = {
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [-100.3051, 25.6701] },
+        properties: { tipo: 'total' },
+      }
+      const { result } = renderHook(() =>
+        useRutaEvacuacion({ sismos: VACIA, refugios, bloqueos: [bloqueoSobreRefugio] }),
+      )
+      await buscar(result)
+      expect(result.current.resultado?.puntoReunion.nombre).not.toBe('Refugio Escuela Juárez')
+    })
+  })
+
   it('al desmontar cancela la descarga en curso', async () => {
     let senal
     obtenerCallesYPuntosReunion.mockImplementation((coordenadas, opciones) => {
