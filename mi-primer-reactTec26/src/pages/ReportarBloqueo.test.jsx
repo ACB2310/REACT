@@ -149,6 +149,25 @@ describe('ReportarBloqueo', () => {
     expect(mapaFalso.actual.flyTo).toHaveBeenCalledWith({ center: [-103.35, 20.67], zoom: 16 })
   })
 
+  // Por ejemplo, la prueba publicada en AWS con http: el navegador bloquea el GPS
+  it('en una página http explica que la ubicación necesita https y no pide el GPS', async () => {
+    const getCurrentPosition = vi.fn()
+    vi.stubGlobal('isSecureContext', false)
+    vi.stubGlobal('navigator', { ...navigator, onLine: true, geolocation: { getCurrentPosition } })
+    abrir()
+    await act(async () => clic(boton('Usar mi ubicación')))
+
+    expect(
+      screen.getByText('Tu ubicación solo funciona si la página se abre con https. Toca el mapa en su lugar.'),
+    ).toBeInTheDocument()
+    expect(getCurrentPosition).not.toHaveBeenCalled()
+
+    // Tocar el mapa sigue funcionando
+    tocarMapa([-103.35, 20.67])
+    clic(screen.getByRole('radio', { name: /Total/ }))
+    expect(boton('Enviar reporte')).toBeEnabled()
+  })
+
   it('si niegan el permiso de ubicación lo explica', async () => {
     vi.stubGlobal('navigator', {
       ...navigator,

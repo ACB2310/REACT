@@ -86,6 +86,19 @@ describe('useSesion', () => {
     expect(result.current.rol).toBe('ciudadano')
   })
 
+  it('al crear cuenta, el correo de confirmación regresa a la dirección actual de la app', async () => {
+    const { result } = usarSesion()
+    await waitFor(() => expect(result.current.cargando).toBe(false))
+
+    await act(() => result.current.crearCuenta('nuevo@ejemplo.mx', 'secreta1'))
+
+    expect(falso.cliente.auth.signUp).toHaveBeenCalledWith({
+      email: 'nuevo@ejemplo.mx',
+      password: 'secreta1',
+      options: { emailRedirectTo: window.location.origin },
+    })
+  })
+
   it('traduce credenciales incorrectas', async () => {
     falso.cliente.auth.signInWithPassword.mockResolvedValue({
       data: {},
