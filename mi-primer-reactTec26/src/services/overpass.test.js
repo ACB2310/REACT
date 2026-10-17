@@ -51,7 +51,9 @@ describe('obtenerCallesYPuntosReunion', () => {
     expect(resultado).toEqual({ elementos, descargadoEn: Date.UTC(2026, 9, 16, 22) })
   })
 
-  it('usa 60 segundos de tiempo límite', async () => {
+  // El servidor tiene [timeout:60]; el navegador espera 5 s más para que llegue el
+  // aviso claro de Overpass ("no terminó la consulta") en lugar de cortar antes
+  it('espera 65 segundos antes de rendirse', async () => {
     vi.useFakeTimers()
     vi.stubGlobal(
       'fetch',
@@ -65,7 +67,7 @@ describe('obtenerCallesYPuntosReunion', () => {
       termino = true
     })
 
-    await vi.advanceTimersByTimeAsync(59000)
+    await vi.advanceTimersByTimeAsync(64000)
     expect(termino).toBe(false)
     await vi.advanceTimersByTimeAsync(1000)
     await expect(promesa).rejects.toThrow('OpenStreetMap tardó demasiado en responder')
@@ -94,6 +96,8 @@ describe('obtenerCallesYPuntosReunion', () => {
   it('rechaza coordenadas inválidas sin consultar', async () => {
     const fetchFalso = responder({ elements: [] })
     await expect(obtenerCallesYPuntosReunion([NaN, 19.4])).rejects.toThrow('Ubicación inválida')
+    await expect(obtenerCallesYPuntosReunion([-99.13, 999])).rejects.toThrow('Ubicación inválida')
+    await expect(obtenerCallesYPuntosReunion([-200, 19.4])).rejects.toThrow('Ubicación inválida')
     expect(fetchFalso).not.toHaveBeenCalled()
   })
 })

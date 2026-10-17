@@ -8,7 +8,9 @@ export const URL_OVERPASS = 'https://overpass-api.de/api/interpreter'
 // Distancias de búsqueda alrededor de la persona
 const RADIO_CALLES_M = 1500
 const RADIO_PUNTOS_REUNION_M = 2500
-const TIEMPO_LIMITE_OVERPASS_MS = 60000
+// La consulta le pide al servidor terminar en 60 s ([timeout:60]); el navegador espera
+// 5 s más para recibir su aviso claro ("no terminó la consulta") en lugar de cortar antes
+const TIEMPO_LIMITE_OVERPASS_MS = 65000
 
 // Tipos de calle por donde se puede caminar
 const TIPOS_CALLE =
@@ -33,7 +35,8 @@ export function consultaOverpass([longitud, latitud]) {
 // Devuelve { elementos (la lista cruda de OSM), descargadoEn (hora de la descarga en ms) }.
 export async function obtenerCallesYPuntosReunion(coordenadas, { signal } = {}) {
   const [longitud, latitud] = coordenadas ?? []
-  if (!Number.isFinite(longitud) || !Number.isFinite(latitud)) {
+  const fueraDeRango = Math.abs(longitud) > 180 || Math.abs(latitud) > 90
+  if (!Number.isFinite(longitud) || !Number.isFinite(latitud) || fueraDeRango) {
     throw new Error('Ubicación inválida para buscar calles')
   }
 
