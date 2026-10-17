@@ -1,0 +1,299 @@
+import { describe, it, expect, vi } from 'vitest'
+import {
+  ErrorRutas,
+  areaKm2,
+  circuloAlrededor,
+  codigoErrorOrs,
+  distanciaKm,
+  lineaTocaAnillo,
+  obstaculosParaRuta,
+  ordenarPorTiempo,
+  planificarRuta,
+  puntoEnAnillo,
+  refugiosCandidatos,
+  resumirRuta,
+} from './logica.js'
+
+// Guadalajara: cada 0.01° ≈ 1 km
+const ORIGEN = [-103.35, 20.67]
+
+function cuadrado([lng, lat], lado = 0.005) {
+  return [
+    [lng, lat],
+    [lng + lado, lat],
+    [lng + lado, lat + lado],
+    [lng, lat + lado],
+    [lng, lat],
+  ]
+}
+function zona(id, esquina, severidad = 1, lado = 0.005) {
+  return { id, severidad, geojson: JSON.stringify({ type: 'Polygon', coordinates: [cuadrado(esquina, lado)] }) }
+}
+function refugio(id, longitud, latitud, estado = 'abierto') {
+  return { id, nombre: `Refugio ${id}`, estado, longitud, latitud }
+}
+function bloqueo(id, tipo, longitud, latitud) {
+  return { id, tipo, longitud, latitud }
+}
+function rutaOrs(coordenadas, duracion = 600, distancia = 1000) {
+  return {
+    type: 'Feature',
+    geometry: { type: 'LineString', coordinates: coordenadas },
+    properties: {
+      summary: { distance: distancia, duration: duracion },
+      segments: [{ steps: [{ instruction: 'Gira a la derecha', distance: 120.4 }, { instruction: 'Llegaste', distance: 0 }] }],
+    },
+  }
+}
+
+describe('geometría', () => {
+  it('distancia en km con [longitud, latitud]', () => {
+    // 0.1° de longitud a 20.67° de latitud ≈ 10.4 km
+    expect(distanciaKm([-103.3, 20.67], [-103.4, 20.67])).toBeCloseTo(10.42, 1)
+  })
+
+  it('círculo de 25 m: cerrado, con el centro dentro y un punto a 50 m fuera', () => {
+    const anillo = circuloAlrededor(ORIGEN)
+    expect(anillo[0]).toEqual(anillo.at(-1))
+    expect(puntoEnAnillo(ORIGEN, anillo)).toBe(true)
+    expect(puntoEnAnillo([ORIGEN[0] + 0.0005, ORIGEN[1]], anillo)).toBe(false)
+  })
+
+  it('área de un cuadrado de ~550 m ≈ 0.29 km²', () => {
+    expect(areaKm2(cuadrado(ORIGEN))).toBeCloseTo(0.29, 1)
+  })
+
+  it('una línea que atraviesa un cuadrado lo toca aunque ningún vértice quede dentro', () => {
+    const anillo = cuadrado([-103.35, 20.67])
+    expect(lineaTocaAnillo([[-103.36, 20.6725], [-103.34, 20.6725]], anillo)).toBe(true)
+    expect(lineaTocaAnillo([[-103.36, 20.69], [-103.34, 20.69]], anillo)).toBe(false)
+  })
+})
+
+describe('refugiosCandidatos', () => {
+  it('solo abiertos, con ubicación, fuera de zonas de severidad 1 y del más cercano al más lejano', () => {
+    const lista = refugiosCandidatos(
+      ORIGEN,
+      [
+        refugio(1, -103.30, 20.67),
+        refugio(2, -103.34, 20.67),
+        refugio(3, -103.345, 20.67, 'lleno'),
+        refugio(4, null, null),
+        refugio(5, -103.3365, 20.6735), // dentro de la zona 9
+        refugio(6, -104.5, 20.67), // a más de 30 km
+      ],
+      [zona(9, [-103.339, 20.671]), zona(10, [-103.30, 20.67], 2)],
+    )
+    expect(lista.map((r) => r.id)).toEqual([2, 1])
+    expect(lista[0].posicion).toEqual([-103.34, 20.67])
+  })
+})
+
+describe('ordenarPorTiempo', () => {
+  it('ordena por duración y quita los que no tienen ruta', () => {
+    const ordenados = ordenarPorTiempo([{ id: 1 }, { id: 2 }, { id: 3 }], [900, null, 300])
+    expect(ordenados.map((c) => c.id)).toEqual([3, 1])
+  })
+})
+
+describe('obstaculosParaRuta', () => {
+  const DESTINO = [-103.30, 20.67]
+  const bloqueos = [bloqueo(1, 'total', -103.33, 20.67), bloqueo(2, 'solo_vehiculos', -103.32, 20.67)]
+
+  it('a pie evita solo los bloqueos totales', () => {
+    const { evitados, avoid } = obstaculosParaRuta({ bloqueos, zonas: [], modo: 'a_pie', origen: ORIGEN, destino: DESTINO })
+    expect(evitados).toEqual({ bloqueos: 1, zonas: 0 })
+    expect(avoid.type).toBe('MultiPolygon')
+  })
+
+  it('en carro evita también los parciales', () => {
+    const { evitados } = obstaculosParaRuta({ bloqueos, zonas: [], modo: 'carro', origen: ORIGEN, destino: DESTINO })
+    expect(evitados).toEqual({ bloqueos: 2, zonas: 0 })
+  })
+
+  it('solo manda lo que está cerca del camino', () => {
+    const lejos = [bloqueo(3, 'total', -103.80, 21.20)]
+    const resultado = obstaculosParaRuta({ bloqueos: lejos, zonas: [], modo: 'a_pie', origen: ORIGEN, destino: DESTINO })
+    expect(resultado.avoid).toBeNull()
+    // …pero lo sigue revisando después
+    expect(resultado.todos).toHaveLength(1)
+  })
+
+  it('no evita la zona en la que está la persona y lo avisa; las de precaución no se evitan', () => {
+    const zonas = [zona(1, [-103.352, 20.668]), zona(2, [-103.32, 20.67]), zona(3, [-103.31, 20.67], 2)]
+    const resultado = obstaculosParaRuta({ bloqueos: [], zonas, modo: 'a_pie', origen: ORIGEN, destino: DESTINO })
+    expect(resultado.origenEnZona).toBe(1)
+    expect(resultado.evitados.zonas).toBe(1)
+    expect(resultado.todos.map((o) => o.id)).toEqual([2])
+  })
+
+  it('no evita el bloqueo junto al que está parada la persona', () => {
+    const resultado = obstaculosParaRuta({
+      bloqueos: [bloqueo(1, 'total', ORIGEN[0], ORIGEN[1])],
+      zonas: [],
+      modo: 'a_pie',
+      origen: ORIGEN,
+      destino: DESTINO,
+    })
+    expect(resultado.avoid).toBeNull()
+  })
+
+  it('nunca rebasa los límites de ORS: lo que no cabe no se manda (pero se revisa después)', () => {
+    // 12 zonas de ~18 km² (≈ 4.3 km de lado) seguidas: no caben todas en 190 km² ni en 19.5 km
+    const zonas = Array.from({ length: 12 }, (_, i) => zona(i + 1, [-103.34 + i * 0.04, 20.65], 1, 0.039))
+    const resultado = obstaculosParaRuta({ bloqueos: [], zonas, modo: 'a_pie', origen: ORIGEN, destino: [-102.90, 20.67] })
+    const anillos = resultado.avoid.coordinates.map(([anillo]) => anillo)
+    const area = anillos.reduce((suma, anillo) => suma + areaKm2(anillo), 0)
+    expect(area).toBeLessThanOrEqual(190)
+    expect(resultado.omitidos).toBeGreaterThan(0)
+    expect(resultado.todos).toHaveLength(12)
+  })
+})
+
+describe('resumirRuta y errores de ORS', () => {
+  it('distancia, tiempo e instrucciones', () => {
+    expect(resumirRuta(rutaOrs([ORIGEN, [-103.34, 20.67]], 615.6, 1234.4))).toEqual({
+      distanciaM: 1234,
+      duracionS: 616,
+      pasos: [
+        { instruccion: 'Gira a la derecha', distanciaM: 120 },
+        { instruccion: 'Llegaste', distanciaM: 0 },
+      ],
+    })
+  })
+
+  it('traduce los errores de ORS', () => {
+    expect(codigoErrorOrs(404, { error: { code: 2009 } })).toBe('SIN_RUTA')
+    expect(codigoErrorOrs(403, {})).toBe('ORS_LLAVE')
+    expect(codigoErrorOrs(429, {})).toBe('ORS_LIMITE')
+    expect(codigoErrorOrs(500, {})).toBe('ORS_ERROR')
+  })
+})
+
+describe('planificarRuta', () => {
+  const refugios = [refugio(1, -103.30, 20.67), refugio(2, -103.34, 20.70), refugio(3, -103.38, 20.67)]
+
+  function lineaRecta(origen, destino) {
+    return rutaOrs([origen, destino], distanciaKm(origen, destino) * 100)
+  }
+
+  it('elige el refugio con menor tiempo real de ruta, no el más cercano', async () => {
+    const pedirMatriz = vi.fn(async () => [600, 300, 900])
+    // La ruta al refugio 2 (el más rápido según la matriz) en realidad tarda más
+    const pedirRuta = vi.fn(async (perfil, origen, destino) =>
+      rutaOrs([origen, destino], destino[0] === -103.34 ? 2000 : 700),
+    )
+
+    const resultado = await planificarRuta({ origen: ORIGEN, modo: 'a_pie', refugios, bloqueos: [], zonas: [], pedirMatriz, pedirRuta })
+
+    // Candidatos del más cercano al más lejano: 3 (3.1 km), 2 (3.5 km) y 1 (5.2 km)
+    expect(pedirMatriz).toHaveBeenCalledWith('foot-walking', [ORIGEN, [-103.38, 20.67], [-103.34, 20.70], [-103.30, 20.67]])
+    expect(pedirRuta).toHaveBeenCalledTimes(3)
+    expect(resultado.estado).toBe('ruta')
+    expect(resultado.destino.id).not.toBe(2)
+    expect(resultado.resumen.duracionS).toBe(700)
+  })
+
+  it('en carro usa driving-car y manda los bloqueos parciales', async () => {
+    const pedirRuta = vi.fn(async (perfil, origen, destino) => lineaRecta(origen, destino))
+    await planificarRuta({
+      origen: ORIGEN,
+      modo: 'carro',
+      refugios: [refugio(1, -103.30, 20.67)],
+      bloqueos: [bloqueo(5, 'solo_vehiculos', -103.32, 20.675)],
+      zonas: [],
+      pedirMatriz: async () => [300],
+      pedirRuta,
+    })
+    expect(pedirRuta.mock.calls[0][0]).toBe('driving-car')
+    expect(pedirRuta.mock.calls[0][3].coordinates).toHaveLength(1)
+  })
+
+  it('descarta una ruta que cruza un bloqueo total y dice que no hay ruta', async () => {
+    const resultado = await planificarRuta({
+      origen: ORIGEN,
+      modo: 'a_pie',
+      refugios: [refugio(1, -103.30, 20.67)],
+      // El bloqueo queda justo en la línea recta, y ORS (falso) no lo evita
+      bloqueos: [bloqueo(7, 'total', -103.32, 20.67)],
+      zonas: [],
+      pedirMatriz: async () => [300],
+      pedirRuta: async (perfil, origen, destino) => lineaRecta(origen, destino),
+    })
+    expect(resultado).toEqual({ estado: 'sin-ruta', motivo: 'bloqueada' })
+  })
+
+  it('sin refugios abiertos cerca lo dice', async () => {
+    const resultado = await planificarRuta({
+      origen: ORIGEN,
+      modo: 'a_pie',
+      refugios: [refugio(1, -103.30, 20.67, 'cerrado')],
+      bloqueos: [],
+      zonas: [],
+      pedirMatriz: vi.fn(),
+      pedirRuta: vi.fn(),
+    })
+    expect(resultado).toEqual({ estado: 'sin-ruta', motivo: 'sin-refugios' })
+  })
+
+  it('si la matriz no llega a ninguno lo dice', async () => {
+    const resultado = await planificarRuta({
+      origen: ORIGEN,
+      modo: 'a_pie',
+      refugios,
+      bloqueos: [],
+      zonas: [],
+      pedirMatriz: async () => [null, null, null],
+      pedirRuta: vi.fn(),
+    })
+    expect(resultado.motivo).toBe('sin-acceso')
+  })
+
+  it('"sin ruta" en ORS para uno no impide usar otro', async () => {
+    const pedirRuta = vi.fn(async (perfil, origen, destino) => {
+      if (destino[0] === -103.34) throw new ErrorRutas('SIN_RUTA')
+      return lineaRecta(origen, destino)
+    })
+    const resultado = await planificarRuta({
+      origen: ORIGEN,
+      modo: 'a_pie',
+      refugios,
+      bloqueos: [],
+      zonas: [],
+      pedirMatriz: async () => [600, 300, 900],
+      pedirRuta,
+    })
+    expect(resultado.estado).toBe('ruta')
+    expect(resultado.destino.id).not.toBe(2)
+  })
+
+  it('un error grave de ORS (límite) se informa si no hubo ninguna ruta', async () => {
+    await expect(
+      planificarRuta({
+        origen: ORIGEN,
+        modo: 'a_pie',
+        refugios,
+        bloqueos: [],
+        zonas: [],
+        pedirMatriz: async () => [600, 300, 900],
+        pedirRuta: async () => {
+          throw new ErrorRutas('ORS_LIMITE')
+        },
+      }),
+    ).rejects.toMatchObject({ codigo: 'ORS_LIMITE' })
+  })
+
+  it('avisa si la persona está dentro de una zona de peligro', async () => {
+    const resultado = await planificarRuta({
+      origen: ORIGEN,
+      modo: 'a_pie',
+      refugios: [refugio(1, -103.30, 20.67)],
+      bloqueos: [],
+      zonas: [zona(1, [-103.352, 20.668])],
+      pedirMatriz: async () => [300],
+      pedirRuta: async (perfil, origen, destino) => lineaRecta(origen, destino),
+    })
+    expect(resultado.estado).toBe('ruta')
+    expect(resultado.origenEnZona).toBe(true)
+  })
+})
