@@ -270,6 +270,39 @@ describe('calcularRutaEvacuacion', () => {
     expect(duracion).toBeLessThan(2000)
   })
 
+  // Las zonas de peligro las dibuja el coordinador tocando el mapa: polígonos de varios km²
+  // con decenas de vértices que cubren buena parte de las calles descargadas
+  it('calcula rápido con zonas de peligro grandes y de muchos vértices', () => {
+    const lado = 71 // ≈ 10 000 calles a ~100 m
+    const paso = 0.001
+    const nodos = {}
+    const aristas = []
+    for (let i = 0; i < lado; i++) {
+      for (let j = 0; j < lado; j++) {
+        const id = `${i}-${j}`
+        nodos[id] = { id, coordenadas: [-99.2 + i * paso, 19.4 + j * paso] }
+        if (i > 0) aristas.push({ id: `h${id}`, desde: `${i - 1}-${j}`, hasta: id, vulnerabilidad: 0.1 })
+        if (j > 0) aristas.push({ id: `v${id}`, desde: `${i}-${j - 1}`, hasta: id, vulnerabilidad: 0.1 })
+      }
+    }
+    // Círculo de 60 vértices alrededor de [lon, lat], radio en grados
+    const circulo = ([lon, lat], radio) => {
+      const anillo = Array.from({ length: 60 }, (_, k) => {
+        const angulo = (k / 60) * 2 * Math.PI
+        return [lon + radio * Math.cos(angulo), lat + radio * Math.sin(angulo)]
+      })
+      return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[...anillo, anillo[0]]] }, properties: { tipo: 'total' } }
+    }
+    const zonas = [circulo([-99.185, 19.45], 0.006), circulo([-99.15, 19.42], 0.006), circulo([-99.15, 19.46], 0.006)]
+
+    const inicio = performance.now()
+    const resultado = calcularRutaEvacuacion({ nodos, aristas }, '0-0', [`${lado - 1}-${lado - 1}`], null, { bloqueos: zonas })
+    const duracion = performance.now() - inicio
+
+    expect(resultado.estado).toBe('ok')
+    expect(duracion).toBeLessThan(400)
+  })
+
   // Para revisar los tramos fuera del grafo: de la persona a la calle y de la calle al punto
   it('tramoBloqueadoAPie revisa sismos fuertes y bloqueos en un tramo suelto', () => {
     const cerca = [-99.9, 16.97] // a 3.3 km de gro1

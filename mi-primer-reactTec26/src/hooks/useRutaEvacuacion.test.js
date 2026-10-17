@@ -635,15 +635,25 @@ describe('useRutaEvacuacion', () => {
       await buscar(result)
       expect(result.current.estado).toBe('listo')
       expect(result.current.resultado.origenEnZona).toBe(true)
+      // El destino queda FUERA de la zona
+      const [lon, lat] = result.current.resultado.puntoReunion.coordenadas
+      const [oeste, sur, este, norte] = DONDE_ESTOY
+      expect(lon >= oeste && lon <= este && lat >= sur && lat <= norte).toBe(false)
     })
 
     // AQUI queda ~10 m al oeste del borde: fuera de la zona, aunque dentro del margen de 20 m.
     // La zona cierra la única calle (n1–n2): no se puede cruzar por en medio de ella.
     it('a unos metros FUERA del borde, la zona sí se evita', async () => {
       const JUNTO_A_MI = [-100.3098, 25.6695, -100.306, 25.6705]
+      // Sin la zona sí hay ruta: lo que la cierra es la zona
+      const sinZona = renderHook(() => useRutaEvacuacion({ sismos: VACIA, zonas: coleccion() }))
+      await buscar(sinZona.result)
+      expect(sinZona.result.current.estado).toBe('listo')
+
       const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA, zonas: coleccion(zona(1, JUNTO_A_MI)) }))
       await buscar(result)
       expect(result.current.estado).toBe('sin-ruta')
+      expect(result.current.resultado).toBeNull()
     })
 
     it('fuera de zonas no hay aviso de zona', async () => {

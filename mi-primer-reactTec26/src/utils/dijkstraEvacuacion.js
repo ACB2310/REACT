@@ -1,5 +1,3 @@
-import booleanIntersects from '@turf/boolean-intersects'
-import { lineString, point } from '@turf/helpers'
 import { crearColaPrioridad } from './colaPrioridad.js'
 import { agrandarCaja, cajaDeGeometria, cajasSeTocan, distanciaMetros, distanciaPuntoSegmentoKm } from './geo.js'
 import { factorRiesgoConSismosPreparados, prepararSismos } from './riesgoSismico.js'
@@ -27,7 +25,8 @@ const TOLERANCIA_BLOQUEO_M = 20
 // y properties.tipo 'total' o 'solo_vehiculos'. También se acepta la geometría sola.
 const TIPOS_GEOMETRIA_BLOQUEO = new Set(['Point', 'MultiPoint', 'LineString', 'MultiLineString', 'Polygon', 'MultiPolygon'])
 
-// Tramos rectos [p, q] de una línea o del contorno de un polígono
+// Tramos rectos [p, q] de una línea o del contorno de un polígono, cada uno con su caja
+// agrandada 20 m: así solo se miden los tramos del bloqueo que quedan cerca de cada calle
 function tramosDeGeometria(geometria) {
   const lineas = {
     LineString: () => [geometria.coordinates],
@@ -35,7 +34,57 @@ function tramosDeGeometria(geometria) {
     Polygon: () => geometria.coordinates,
     MultiPolygon: () => geometria.coordinates.flat(),
   }[geometria.type]()
-  return lineas.flatMap((linea) => linea.slice(1).map((q, i) => [linea[i], q]))
+  return lineas.flatMap((linea) =>
+    linea.slice(1).map((q, i) => {
+      const p = linea[i]
+      const caja = agrandarCaja(cajaDeGeometria({ type: 'LineString', coordinates: [p, q] }), TOLERANCIA_BLOQUEO_M / 1000)
+      return { p, q, caja }
+    }),
+  )
+}
+
+// Polígonos de un bloqueo como [anilloExterior, ...huecos]; las líneas no tienen
+function poligonosDeGeometria(geometria) {
+  if (geometria.type === 'Polygon') return [geometria.coordinates]
+  if (geometria.type === 'MultiPolygon') return geometria.coordinates
+  return []
+}
+
+// ¿El punto está dentro del anillo? (se cuenta cuántas veces una línea horizontal cruza el borde)
+function puntoEnAnillo([x, y], anillo) {
+  let dentro = false
+  for (let i = 0, j = anillo.length - 1; i < anillo.length; j = i++) {
+    const [xi, yi] = anillo[i]
+    const [xj, yj] = anillo[j]
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) dentro = !dentro
+  }
+  return dentro
+}
+
+// Dentro del polígono: dentro del anillo exterior y fuera de sus huecos
+function puntoEnPoligono(punto, [exterior, ...huecos]) {
+  return puntoEnAnillo(punto, exterior) && !huecos.some((hueco) => puntoEnAnillo(punto, hueco))
+}
+
+// ¿Se cruzan (o se tocan) los tramos a-b y p-q? Geometría plana: sobra a escala de calles.
+function orientacion(a, b, c) {
+  return Math.sign((b[1] - a[1]) * (c[0] - b[0]) - (b[0] - a[0]) * (c[1] - b[1]))
+}
+function sobreTramo(a, b, c) {
+  return Math.min(a[0], b[0]) <= c[0] && c[0] <= Math.max(a[0], b[0]) && Math.min(a[1], b[1]) <= c[1] && c[1] <= Math.max(a[1], b[1])
+}
+function tramosSeCruzan(a, b, p, q) {
+  const o1 = orientacion(a, b, p)
+  const o2 = orientacion(a, b, q)
+  const o3 = orientacion(p, q, a)
+  const o4 = orientacion(p, q, b)
+  if (o1 !== o2 && o3 !== o4) return true
+  return (
+    (o1 === 0 && sobreTramo(a, b, p)) ||
+    (o2 === 0 && sobreTramo(a, b, q)) ||
+    (o3 === 0 && sobreTramo(p, q, a)) ||
+    (o4 === 0 && sobreTramo(p, q, b))
+  )
 }
 
 // Prepara los bloqueos que impiden pasar A PIE, una sola vez por cálculo:
@@ -56,6 +105,7 @@ function prepararBloqueosAPie(bloqueos) {
       geometria,
       esPunto,
       tramos: esPunto ? [] : tramosDeGeometria(geometria),
+      poligonos: esPunto ? [] : poligonosDeGeometria(geometria),
       caja: agrandarCaja(cajaDeGeometria(geometria), TOLERANCIA_BLOQUEO_M / 1000),
     })
   }
@@ -81,21 +131,25 @@ function distanciaEntreTramosM([a, b], [p, q]) {
 
 // ¿El tramo [a, b] toca algún bloqueo que impida pasar a pie (o pasa a 20 m o menos)?
 // Con a == b sirve para saber si un punto (un refugio, la persona) queda dentro de un bloqueo.
+//
+// Para líneas y polígonos (las zonas de peligro pueden medir km² y tener decenas de vértices)
+// solo se miden los lados que quedan cerca de la calle; el resto se descarta por su caja.
+// Si la calle no cruza ni pasa cerca de ningún lado, solo queda saber si está toda adentro:
+// basta con ver si uno de sus extremos está dentro del polígono.
 function tocaBloqueoAPie(a, b, bloqueos) {
   if (bloqueos.length === 0) return false
   const cajaTramo = cajaDeGeometria({ type: 'LineString', coordinates: [a, b] })
-  const tramo = a[0] === b[0] && a[1] === b[1] ? point(a) : lineString([a, b])
-  return bloqueos.some(({ geometria, esPunto, tramos, caja }) => {
+  return bloqueos.some(({ geometria, esPunto, tramos, poligonos, caja }) => {
     if (!cajasSeTocan(cajaTramo, caja)) return false
     if (esPunto) {
       return puntosDeBloqueo(geometria).some(
         (p) => distanciaPuntoSegmentoKm(p, a, b) * 1000 <= TOLERANCIA_BLOQUEO_M,
       )
     }
-    return (
-      booleanIntersects(tramo, geometria) ||
-      tramos.some((tramoBloqueo) => distanciaEntreTramosM([a, b], tramoBloqueo) <= TOLERANCIA_BLOQUEO_M)
-    )
+    const cercanos = tramos.filter((tramo) => cajasSeTocan(cajaTramo, tramo.caja))
+    if (cercanos.some(({ p, q }) => tramosSeCruzan(a, b, p, q))) return true
+    if (poligonos.some((poligono) => puntoEnPoligono(a, poligono))) return true
+    return cercanos.some(({ p, q }) => distanciaEntreTramosM([a, b], [p, q]) <= TOLERANCIA_BLOQUEO_M)
   })
 }
 

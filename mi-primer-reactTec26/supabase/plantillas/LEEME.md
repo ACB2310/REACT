@@ -12,3 +12,6 @@
 Si la lista oficial ya trae coordenadas, no las pongas en el CSV: avísale al equipo
 para cargarlas con SQL (`ubicacion = st_makepoint(longitud, latitud)`, en ese orden).
 Nunca se inventan coordenadas ni se cargan refugios de ejemplo en la base real.
+Única excepción, pedida para probar mientras llega la lista oficial (2026-10-17):
+`supabase/pruebas/datos_prueba_cargar.sql` (refugios `[PRUEBA] …`). Bórralos con
+`datos_prueba_borrar.sql` antes de usar la app con personas reales o de importar la lista.
