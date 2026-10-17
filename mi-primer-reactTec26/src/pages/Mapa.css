@@ -289,3 +289,8 @@
   color: var(--texto);
   border: 2px solid var(--borde);
 }
+
+/* En la leyenda, las bases de brigadas llevan borde oscuro como en el mapa */
+.leyenda-color-base {
+  border: 2px solid #111827;
+}
