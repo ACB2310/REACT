@@ -1,9 +1,10 @@
 /* Pantalla completa: barra arriba, mapa en medio y pie abajo */
 .pantalla-mapa {
   display: grid;
-  grid-template-rows: auto 1fr auto;
-  /* Ocupa el espacio que deja la barra de navegación (ver App.css) */
-  height: 100%;
+  /* El mapa nunca baja de 300 px: si hay muchos avisos, la pantalla hace scroll */
+  grid-template-rows: auto minmax(300px, 1fr) auto;
+  /* Ocupa al menos el espacio que deja la barra de navegación (ver App.css) */
+  min-height: 100%;
 }
 
 .barra-superior,
@@ -27,6 +28,8 @@
 .contenedor-mapa {
   position: relative;
   min-height: 0;
+  /* El panel de capas y el botón de reportar no se salen del mapa */
+  overflow: hidden;
 }
 
 .pie {
@@ -124,6 +127,9 @@
   left: 8px;
   z-index: 1;
   display: grid;
+  /* Dos columnas para que las 5 capas quepan en mapas bajitos */
+  grid-template-columns: repeat(2, auto);
+  column-gap: 12px;
   padding: 4px 8px;
   border: 1px solid var(--borde);
   border-radius: 8px;
@@ -133,6 +139,7 @@
 }
 
 .panel-capas-titulo {
+  grid-column: 1 / -1;
   padding: 0 4px;
   font-size: 0.8125rem;
   font-weight: 700;
