@@ -79,10 +79,11 @@ export function useDatosPeriodicos(obtener, intervaloMs, { activo = true } = {})
     }
   }, [activo, intervaloMs])
 
-  // Para el botón "Reintentar"
-  const recargar = useCallback(() => {
+  // Para el botón "Reintentar". Con { silencioso: true } (por ejemplo, un aviso de
+  // tiempo real) recarga sin mostrar "Actualizando…".
+  const recargar = useCallback((opciones) => {
     if (!cargarRef.current) return
-    setEstado('cargando')
+    if (opciones?.silencioso !== true) setEstado('cargando')
     cargarRef.current()
   }, [])
 
