@@ -1,3 +1,6 @@
 # Copias comprimidas del proyecto: no van al repo (pueden traer .env.local)
 *.tar.gz
 *.zip
+
+# Archivos de trabajo de Claude Code (superpowers): bitácoras y salidas temporales
+.superpowers/
