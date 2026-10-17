@@ -145,4 +145,45 @@ describe('useBloqueos', () => {
     expect(result.current.estado).toBe('error')
     expect(result.current.error).toBe('Supabase no está configurado')
   })
+
+  describe('con la copia guardada en el teléfono (sin conexión)', () => {
+    function guardarCopia(features) {
+      localStorage.setItem(
+        'datos:v1:bloqueos',
+        JSON.stringify({ datos: { type: 'FeatureCollection', features }, actualizadoEn: AHORA - 3600000, consultadoEn: AHORA - 3600000, guardadoEn: AHORA - 3600000 }),
+      )
+    }
+
+    // La copia puede ser de antes de que alguien lo RENOVARA: su expiraEn guardado ya no es
+    // confiable. Ante la duda, sigue contando (la ruta lo evita) hasta que lleguen datos nuevos.
+    it('un bloqueo de la copia que parece vencido se sigue tomando en cuenta', async () => {
+      guardarCopia([bloqueo(1, -30), bloqueo(2, 90)])
+      obtenerBloqueos.mockRejectedValue(new Error('Sin conexión'))
+      const { result } = renderHook(() => useBloqueos())
+      await esperarPromesas()
+      expect(result.current.desdeAlmacen).toBe(true)
+      expect(result.current.bloqueos.features.map((b) => b.properties.id)).toEqual([1, 2])
+    })
+
+    it('al llegar datos nuevos, los vencidos se quitan como siempre', async () => {
+      guardarCopia([bloqueo(1, -30)])
+      obtenerBloqueos.mockResolvedValue({ datos: { type: 'FeatureCollection', features: [bloqueo(1, -30), bloqueo(2, 90)] }, actualizadoEn: AHORA })
+      const { result } = renderHook(() => useBloqueos())
+      await esperarPromesas()
+      expect(result.current.desdeAlmacen).toBe(false)
+      expect(result.current.bloqueos.features.map((b) => b.properties.id)).toEqual([2])
+    })
+
+    // "Es mío" depende de quién inició sesión: no se guarda (otra persona podría usar el teléfono)
+    it('no guarda en el teléfono cuáles bloqueos reportó la persona', async () => {
+      const mio = bloqueo(3, 60)
+      mio.properties.esMio = true
+      obtenerBloqueos.mockResolvedValue({ datos: { type: 'FeatureCollection', features: [mio] }, actualizadoEn: AHORA })
+      renderHook(() => useBloqueos())
+      await esperarPromesas()
+      const copia = JSON.parse(localStorage.getItem('datos:v1:bloqueos'))
+      expect(copia.datos.features[0].properties).not.toHaveProperty('esMio')
+      expect(copia.datos.features[0].properties.id).toBe(3)
+    })
+  })
 })

@@ -32,6 +32,7 @@ import { renovarBloqueo, eliminarBloqueo, confirmarBloqueo } from '../services/b
 import { formatearFechaHora } from '../utils/fechas.js'
 import { AVISO_OFICIAL } from '../utils/avisos.js'
 import { resumirEstadoFuentes } from '../utils/estadoFuentes.js'
+import { copiaDatosParaRuta } from '../utils/copiasGuardadas.js'
 import './Mapa.css'
 
 // Arreglo vacío fijo: la ruta se recalcula cada vez que cambia el arreglo de bloqueos
@@ -198,6 +199,7 @@ function Mapa() {
     [gdacs, gdacs.datos],
     [refugios, refugios.refugios],
     [bloqueos, bloqueos.bloqueos],
+    [zonas, zonas.zonas],
   ]
     .filter(([fuente, datos]) => datos && Number.isFinite(fuente.consultadoEn))
     .map(([fuente]) => fuente.consultadoEn)
@@ -394,6 +396,7 @@ function Mapa() {
           modo={modoRuta}
           alCambiarModo={setModoRuta}
           sinDatosBloqueos={bloqueos.bloqueos == null}
+          copiaDatosRuta={copiaDatosParaRuta({ bloqueos, zonas, refugios })}
         />
         <p className="aviso-oficial">{AVISO_OFICIAL}</p>
       </div>

@@ -11,6 +11,19 @@ export const REVISION_VENCIDOS_MS = 60000
 // Por muchos avisos que lleguen seguidos, se recarga como máximo una vez cada 5 s
 export const RECARGA_MINIMA_MS = 5000
 
+// En la copia del teléfono no se guarda "es mío": depende de quién inició sesión, y otra
+// persona podría usar el mismo teléfono (la migración 4 cuida que no se sepa quién reportó qué)
+function sinDatosDeSesion(datos) {
+  return {
+    ...datos,
+    features: (datos?.features ?? []).map((bloqueo) => {
+      const properties = { ...bloqueo.properties }
+      delete properties.esMio
+      return { ...bloqueo, properties }
+    }),
+  }
+}
+
 // Entrega los bloqueos vigentes (`bloqueos`, FeatureCollection) y el estado de la carga
 export function useBloqueos() {
   // guardarComo: copia en el teléfono para usarla sin conexión (etapa 7; solo datos públicos)
@@ -18,6 +31,7 @@ export function useBloqueos() {
   const { datos, ...resto } = useDatosPeriodicos(obtenerBloqueos, INTERVALO_BLOQUEOS_MS, {
     activo: supabaseConfigurado,
     guardarComo: 'bloqueos',
+    prepararCopia: sinDatosDeSesion,
   })
   const { recargar } = resto
 
@@ -58,9 +72,13 @@ export function useBloqueos() {
   // Ids de los bloqueos vigentes, como texto. Si en la revisión de cada minuto no venció
   // ninguno, la clave no cambia y la lista es la MISMA: así la ruta de evacuación
   // (que se recalcula cuando cambia la lista) no repite el cálculo sin necesidad.
+  // Con la copia del teléfono NO se quitan los "vencidos": la copia puede ser de antes de que
+  // alguien renovara el bloqueo. Ante la duda sigue contando (la ruta lo evita) hasta que
+  // lleguen datos nuevos; el panel de la ruta avisa que son datos guardados.
+  const { desdeAlmacen } = resto
   const claveVigentes = datos
     ? datos.features
-        .filter((bloqueo) => (bloqueo.properties.expiraEn ?? 0) > ahora)
+        .filter((bloqueo) => desdeAlmacen || (bloqueo.properties.expiraEn ?? 0) > ahora)
         .map((bloqueo) => bloqueo.properties.id ?? bloqueo.id)
         .join(',')
     : null

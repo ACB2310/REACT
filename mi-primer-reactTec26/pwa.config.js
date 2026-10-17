@@ -6,13 +6,11 @@
 // - Los DATOS (sismos, refugios, bloqueos…) NO los guarda el service worker: los guarda la app
 //   (useDatosPeriodicos) para poder decir de qué hora son. Supabase lleva la sesión.
 
-const DIAS = 86400
-
 // OJO: Workbox copia estas dos funciones al service worker COMO TEXTO, sin nada de lo que
 // hay alrededor. Por eso cada una se escribe completa, sin usar constantes ni otras funciones.
 
 // El estilo y el TileJSON (/planet) cambian cuando OpenFreeMap publica teselas nuevas
-// (cada semana): se usa lo guardado y, si hay señal, se revisa en segundo plano
+// (cada semana); el TileJSON dice qué versión de teselas pedir
 function esEstiloDelMapa({ url }) {
   return (
     url.origin === 'https://tiles.openfreemap.org' &&
@@ -36,11 +34,17 @@ export const opcionesWorkbox = {
   maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
   runtimeCaching: [
     {
+      // Con señal (3 s como máximo) se usa el nuevo y las teselas de esa versión se guardan
+      // en la misma visita; sin señal, el último guardado, que apunta a las teselas guardadas.
+      // (Con "usar lo guardado y revisar después", tras una actualización semanal se pedirían
+      // sin señal teselas nuevas que nunca se guardaron: el mapa saldría vacío.)
+      // Sin límite de días: el mapa debe servir aunque la app se abriera hace meses.
       urlPattern: esEstiloDelMapa,
-      handler: 'StaleWhileRevalidate',
+      handler: 'NetworkFirst',
       options: {
         cacheName: 'mapa-estilos',
-        expiration: { maxEntries: 20, maxAgeSeconds: 14 * DIAS },
+        networkTimeoutSeconds: 3,
+        expiration: { maxEntries: 20 },
       },
     },
     {
@@ -49,8 +53,9 @@ export const opcionesWorkbox = {
       options: {
         cacheName: 'mapa-teselas',
         // ~3000 teselas son unas cuantas ciudades a varios acercamientos (decenas de MB).
-        // Si el teléfono se queda sin espacio, se borra esta caché antes que fallar.
-        expiration: { maxEntries: 3000, maxAgeSeconds: 14 * DIAS, purgeOnQuotaError: true },
+        // No vencen por tiempo (la ruta trae la versión). Si el teléfono se queda sin
+        // espacio, se borra esta caché antes que fallar.
+        expiration: { maxEntries: 3000, purgeOnQuotaError: true },
         cacheableResponse: { statuses: [0, 200] },
       },
     },

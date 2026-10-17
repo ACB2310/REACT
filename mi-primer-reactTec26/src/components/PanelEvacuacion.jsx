@@ -1,4 +1,5 @@
 import { formatearFechaHora } from '../utils/fechas.js'
+import { textoCopiaDatosRuta } from '../utils/copiasGuardadas.js'
 
 // Caminando con prisa, en promedio
 const METROS_POR_MINUTO = 70
@@ -72,6 +73,8 @@ function PanelEvacuacion({
   sinDatosSismos,
   sinDatosBloqueos,
   sinDatosZonas,
+  // { nombres, desde } si bloqueos, zonas o refugios vienen de la copia del teléfono (etapa 7)
+  copiaDatosRuta = null,
   bloqueosSinConfirmarCerca,
   buscarRuta,
   limpiar,
@@ -134,6 +137,7 @@ function PanelEvacuacion({
           {sinDatosSismos && <p>No hay datos de sismos: el riesgo sísmico de la ruta es desconocido.</p>}
           {sinDatosBloqueos && <p>No se pudieron cargar los bloqueos reportados: la ruta no los toma en cuenta.</p>}
           {sinDatosZonas && <p>No se pudieron cargar las zonas de peligro: la ruta no las toma en cuenta.</p>}
+          {copiaDatosRuta && <p>{textoCopiaDatosRuta(copiaDatosRuta, formatearFechaHora)}</p>}
           <p className="fuente">{textoFuentes(resultado, zona, ubicadoEn)}</p>
           <p className="fuente">
             Ruta calculada en tu teléfono; puede no reflejar daños recientes. Sigue las indicaciones oficiales.

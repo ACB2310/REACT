@@ -12,22 +12,34 @@ describe('opcionesWorkbox', () => {
     expect(opcionesWorkbox.maximumFileSizeToCacheInBytes).toBe(4 * 1024 * 1024)
   })
 
-  it('el estilo del mapa y su TileJSON se revisan al tener señal (cambian cada semana)', () => {
+  // El TileJSON dice qué versión de teselas pedir. Con señal se usa el nuevo (y sus teselas
+  // se guardan en esa misma visita); sin señal, el último guardado, que apunta a las teselas
+  // que SÍ están guardadas. Sin límite de días: el mapa debe servir aunque la app se haya
+  // abierto por última vez hace meses.
+  it('estilo y TileJSON: primero la red (3 s) y si no, lo guardado, sin vencimiento', () => {
     for (const url of ['https://tiles.openfreemap.org/styles/liberty', 'https://tiles.openfreemap.org/planet']) {
-      expect(regla(url)).toMatchObject({ handler: 'StaleWhileRevalidate', options: { cacheName: 'mapa-estilos' } })
+      const encontrada = regla(url)
+      expect(encontrada).toMatchObject({
+        handler: 'NetworkFirst',
+        options: { cacheName: 'mapa-estilos', networkTimeoutSeconds: 3, expiration: { maxEntries: 20 } },
+      })
+      expect(encontrada.options.expiration.maxAgeSeconds).toBeUndefined()
     }
   })
 
-  it('teselas, letras e íconos del mapa se guardan hasta 14 días', () => {
+  // La ruta de cada tesela trae su versión: nunca cambia, así que no vence por tiempo
+  it('teselas, letras e íconos del mapa se guardan sin vencimiento (máximo 3000)', () => {
     for (const url of [
       'https://tiles.openfreemap.org/planet/20261015_001001_pt/12/870/1782.pbf',
       'https://tiles.openfreemap.org/fonts/Noto%20Sans%20Regular/0-255.pbf',
       'https://tiles.openfreemap.org/sprites/ofm_f384/ofm.json',
     ]) {
-      expect(regla(url)).toMatchObject({
+      const encontrada = regla(url)
+      expect(encontrada).toMatchObject({
         handler: 'CacheFirst',
-        options: { cacheName: 'mapa-teselas', expiration: { maxEntries: 3000, maxAgeSeconds: 14 * 86400 } },
+        options: { cacheName: 'mapa-teselas', expiration: { maxEntries: 3000, purgeOnQuotaError: true } },
       })
+      expect(encontrada.options.expiration.maxAgeSeconds).toBeUndefined()
     }
   })
 

@@ -24,7 +24,8 @@ const TEXTOS_ESPERA = {
 // - evacuacion: lo que devuelve useRutaEvacuacion (para el respaldo)
 // - modo / alCambiarModo: 'a_pie' | 'carro'
 // - sinDatosBloqueos: para el aviso del respaldo
-function PanelRuta({ ruta, evacuacion, modo, alCambiarModo, sinDatosBloqueos }) {
+// - copiaDatosRuta: qué datos de la ruta sin conexión vienen de la copia del teléfono (etapa 7)
+function PanelRuta({ ruta, evacuacion, modo, alCambiarModo, sinDatosBloqueos, copiaDatosRuta = null }) {
   const { estado, resultado, origen, error, aviso } = ruta
   const trabajando = estado === 'ubicando' || estado === 'calculando'
   const hayAlgo = !['inactivo', 'ubicando', 'calculando'].includes(estado)
@@ -179,7 +180,12 @@ function PanelRuta({ ruta, evacuacion, modo, alCambiarModo, sinDatosBloqueos }) 
               <p>{aviso}</p>
             </div>
           )}
-          <PanelEvacuacion {...evacuacion} sinDatosBloqueos={sinDatosBloqueos} mostrarBotones={false} />
+          <PanelEvacuacion
+            {...evacuacion}
+            sinDatosBloqueos={sinDatosBloqueos}
+            copiaDatosRuta={copiaDatosRuta}
+            mostrarBotones={false}
+          />
         </>
       )}
     </section>

@@ -189,6 +189,21 @@ describe('PanelEvacuacion', () => {
       expect(screen.queryByText(/zonas de peligro: la ruta no las toma/)).not.toBeInTheDocument()
     })
 
+    // Etapa 7: sin señal, la ruta usa la copia del teléfono; debe decir de cuándo es
+    it('si la ruta usa datos guardados en el teléfono, dice cuáles y de cuándo', () => {
+      conRuta({ copiaDatosRuta: { nombres: ['bloqueos', 'zonas de peligro'], desde: DESCARGADO } })
+      expect(
+        screen.getByText((texto) =>
+          /^Sin datos nuevos: la ruta usa bloqueos y zonas de peligro guardados en tu teléfono \(del 16 oct\.? 2026, 16:00\)\. Puede haber cambios que no conoce\.$/.test(texto),
+        ),
+      ).toBeInTheDocument()
+    })
+
+    it('sin copia guardada no muestra ese aviso', () => {
+      conRuta()
+      expect(screen.queryByText(/guardados en tu teléfono/)).not.toBeInTheDocument()
+    })
+
     it('con datos de bloqueos no muestra ese aviso', () => {
       conRuta()
       expect(screen.queryByText(/no los toma en cuenta/)).not.toBeInTheDocument()

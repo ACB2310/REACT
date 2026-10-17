@@ -34,8 +34,9 @@ function guardarCopia(clave, copia) {
 // Si una recarga falla, se conservan los últimos datos que sí llegaron.
 // Con `activo: false` no se pide nada (por ejemplo, si la capa está apagada).
 // Con `guardarComo: 'nombre'` se guarda una copia para usarla sin conexión (ver arriba);
-// mientras se muestra esa copia, `desdeAlmacen` es true.
-export function useDatosPeriodicos(obtener, intervaloMs, { activo = true, guardarComo = null } = {}) {
+// mientras se muestra esa copia, `desdeAlmacen` es true. `prepararCopia(datos)` (opcional)
+// quita lo que no debe quedar guardado en el teléfono (por ejemplo, lo que depende de la sesión).
+export function useDatosPeriodicos(obtener, intervaloMs, { activo = true, guardarComo = null, prepararCopia = null } = {}) {
   const [copiaInicial] = useState(() => leerCopia(guardarComo))
   const [datos, setDatos] = useState(copiaInicial?.datos ?? null)
   const [actualizadoEn, setActualizadoEn] = useState(copiaInicial?.actualizadoEn ?? null)
@@ -44,6 +45,7 @@ export function useDatosPeriodicos(obtener, intervaloMs, { activo = true, guarda
   const [consultadoEn, setConsultadoEn] = useState(copiaInicial?.consultadoEn ?? null)
   const [desdeAlmacen, setDesdeAlmacen] = useState(copiaInicial !== null)
   const guardarComoRef = useRef(guardarComo)
+  const prepararCopiaRef = useRef(prepararCopia)
   const [estado, setEstado] = useState('cargando')
   const [error, setError] = useState(null)
   const [sinConexion, setSinConexion] = useState(() => !navigator.onLine)
@@ -79,7 +81,7 @@ export function useDatosPeriodicos(obtener, intervaloMs, { activo = true, guarda
         setConsultadoEn(ahora)
         setDesdeAlmacen(false)
         guardarCopia(guardarComoRef.current, {
-          datos: resultado.datos,
+          datos: prepararCopiaRef.current ? prepararCopiaRef.current(resultado.datos) : resultado.datos,
           actualizadoEn: resultado.actualizadoEn ?? null,
           consultadoEn: ahora,
           guardadoEn: ahora,
