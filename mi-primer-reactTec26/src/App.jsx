@@ -8,6 +8,7 @@ import GestionBrigadas from './pages/GestionBrigadas.jsx'
 import MiBrigada from './pages/MiBrigada.jsx'
 import ZonasPeligro from './pages/ZonasPeligro.jsx'
 import BarraNavegacion from './components/BarraNavegacion.jsx'
+import BotonInstalarApp from './components/BotonInstalarApp.jsx'
 import { useSesion } from './hooks/useSesion.js'
 import './App.css'
 
@@ -85,6 +86,7 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
+      <BotonInstalarApp />
       <BarraNavegacion />
     </div>
   )

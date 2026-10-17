@@ -1,0 +1,54 @@
+.aviso-instalacion {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--borde);
+  border-left: 4px solid var(--primario);
+  background-color: var(--superficie);
+  box-shadow: 0 -4px 16px rgb(0 0 0 / 0.08);
+}
+
+.aviso-instalacion strong {
+  display: block;
+  font-size: 0.9375rem;
+}
+
+.aviso-instalacion p {
+  color: var(--texto-suave);
+  font-size: 0.8125rem;
+}
+
+.boton-instalar {
+  min-height: 44px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 22px;
+  background-color: var(--primario);
+  color: var(--superficie);
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.boton-instalar:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.boton-instalar:focus-visible {
+  outline: 3px solid var(--texto);
+  outline-offset: 2px;
+}
+
+@media (max-width: 380px) {
+  .aviso-instalacion {
+    grid-template-columns: 1fr;
+  }
+
+  .boton-instalar {
+    width: 100%;
+  }
+}

@@ -1,7 +1,7 @@
 /* La app ocupa toda la pantalla: la pantalla actual arriba y la barra de navegación abajo */
 .app {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto auto;
   height: 100dvh;
 }
 
