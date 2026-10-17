@@ -1,7 +1,13 @@
 // @vitest-environment node
 // Funciones puras sin DOM
 import { describe, it, expect } from 'vitest'
-import { VULNERABILIDAD_VIA, vulnerabilidadDeVia, nodoMasCercano, construirZonaEvacuacion } from './grafoOsm.js'
+import {
+  VULNERABILIDAD_VIA,
+  vulnerabilidadDeVia,
+  nodoMasCercano,
+  nodoMasCercanoConectado,
+  construirZonaEvacuacion,
+} from './grafoOsm.js'
 import { calcularRutaEvacuacion } from './dijkstraEvacuacion.js'
 import { elementosOverpassEjemplo } from '../mocks/overpassEjemplo.js'
 
@@ -149,6 +155,37 @@ describe('nodoMasCercano', () => {
 
   it('en un grafo vacío devuelve null', () => {
     expect(nodoMasCercano({ nodos: {}, aristas: [] }, [-100.3, 25.67])).toBeNull()
+  })
+})
+
+// Con datos reales de la CDMX, la persona quedó pegada a un andador suelto de 24 cruces
+// sin conexión con la calle: salía "no hay ruta" aunque la calle de al lado sí conecta
+describe('nodoMasCercanoConectado', () => {
+  // Un andador suelto (sin conexión con las demás calles) justo junto a la persona
+  const islita = {
+    type: 'way',
+    id: 800,
+    nodes: [80, 81],
+    geometry: [{ lat: 25.67012, lon: -100.3099 }, { lat: 25.67015, lon: -100.3098 }],
+    tags: { highway: 'footway' },
+  }
+  const { grafo } = construirZonaEvacuacion([...elementosOverpassEjemplo, islita])
+  const AQUI = [-100.3099, 25.6701]
+
+  it('el más cercano sin más es el del andador suelto', () => {
+    expect(nodoMasCercano(grafo, AQUI)).toBe('80')
+  })
+
+  it('elige el cruce más cercano que sí llega a algún destino', () => {
+    expect(nodoMasCercanoConectado(grafo, AQUI, ['3', '4'])).toBe('1')
+  })
+
+  it('si ningún cruce cercano llega a un destino devuelve null', () => {
+    expect(nodoMasCercanoConectado(grafo, AQUI, ['no-existe'])).toBeNull()
+  })
+
+  it('respeta la distancia máxima', () => {
+    expect(nodoMasCercanoConectado(grafo, [-100.28, 25.69], ['3'])).toBeNull()
   })
 })
 

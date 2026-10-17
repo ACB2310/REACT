@@ -115,6 +115,14 @@ describe('PanelEvacuacion', () => {
       expect(screen.getByText('Punto de reunión Plaza Hidalgo: 650 m · unos 10 min a pie · riesgo alto')).toBeInTheDocument()
     })
 
+    // Con datos reales: muchos puntos de OSM no tienen nombre y salía "Punto de reunión Punto de reunión"
+    it('un punto de reunión sin nombre no repite el tipo', () => {
+      conRuta({
+        resultado: resultado({ puntoReunion: { nombre: 'Punto de reunión', coordenadas: [0, 0], tipo: 'punto-reunion' } }),
+      })
+      expect(screen.getByText('Punto de reunión: 1.0 km · unos 15 min a pie · riesgo bajo')).toBeInTheDocument()
+    })
+
     it('un refugio dice que es refugio', () => {
       conRuta({
         resultado: resultado({ puntoReunion: { nombre: 'Escuela Juárez', coordenadas: [0, 0], tipo: 'refugio' } }),

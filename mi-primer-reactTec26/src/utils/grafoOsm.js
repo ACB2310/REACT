@@ -69,6 +69,55 @@ export function nodoMasCercano(grafo, coordenadas, maxM = DISTANCIA_MAXIMA_A_CAL
   return mejorDistancia <= maxM ? mejorId : null
 }
 
+// Pedazo de red al que pertenece cada nodo: los nodos unidos por calles comparten número.
+// En OSM a veces hay andadores o patios sueltos que no se conectan con ninguna calle.
+function componentesConexas(grafo) {
+  const vecinos = new Map()
+  for (const { desde, hasta } of grafo.aristas ?? []) {
+    if (!vecinos.has(desde)) vecinos.set(desde, [])
+    if (!vecinos.has(hasta)) vecinos.set(hasta, [])
+    vecinos.get(desde).push(hasta)
+    vecinos.get(hasta).push(desde)
+  }
+  const componente = new Map()
+  let numero = 0
+  for (const id of Object.keys(grafo.nodos ?? {})) {
+    if (componente.has(id)) continue
+    numero++
+    componente.set(id, numero)
+    const pendientes = [id]
+    while (pendientes.length > 0) {
+      const actual = pendientes.pop()
+      for (const vecino of vecinos.get(actual) ?? []) {
+        if (!componente.has(vecino)) {
+          componente.set(vecino, numero)
+          pendientes.push(vecino)
+        }
+      }
+    }
+  }
+  return componente
+}
+
+// Como nodoMasCercano, pero solo entre los nodos que SÍ están conectados por calles con
+// alguno de `idsDestino`. Evita pegar a la persona a un andador suelto desde el que no se
+// llega a ningún lado (pasó con datos reales de la CDMX). Devuelve null si no hay ninguno.
+export function nodoMasCercanoConectado(grafo, coordenadas, idsDestino, maxM = DISTANCIA_MAXIMA_A_CALLE_M) {
+  const componente = componentesConexas(grafo)
+  const conDestino = new Set((idsDestino ?? []).map((id) => componente.get(id)).filter(Boolean))
+  let mejorId = null
+  let mejorDistancia = Infinity
+  for (const nodo of Object.values(grafo?.nodos ?? {})) {
+    if (!conDestino.has(componente.get(nodo.id))) continue
+    const distancia = distanciaMetros(coordenadas, nodo.coordenadas)
+    if (distancia < mejorDistancia) {
+      mejorDistancia = distancia
+      mejorId = nodo.id
+    }
+  }
+  return mejorDistancia <= maxM ? mejorId : null
+}
+
 // Convierte la respuesta de Overpass en:
 // - grafo: { nodos: { [id]: { id, coordenadas: [lon, lat] } }, aristas: [{ id, desde, hasta, vulnerabilidad, tipoVia }] }
 // - puntosReunion: [{ id, nombre, coordenadas, nodoId }], solo los que quedan a ≤ 300 m de una calle

@@ -520,6 +520,23 @@ describe('useRutaEvacuacion', () => {
     })
   })
 
+  // Error encontrado con datos reales de la CDMX (2026-10-17)
+  it('no se queda en un andador suelto: usa la calle cercana que sí conecta', async () => {
+    const islita = {
+      type: 'way',
+      id: 800,
+      nodes: [80, 81],
+      geometry: [{ lat: 25.67012, lon: -100.3099 }, { lat: 25.67015, lon: -100.3098 }],
+      tags: { highway: 'footway' },
+    }
+    obtenerCallesYPuntosReunion.mockResolvedValue({ elementos: [...elementosOverpassEjemplo, islita], descargadoEn: Date.now() })
+    const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA }))
+    await buscar(result)
+
+    expect(result.current.estado).toBe('listo')
+    expect(result.current.resultado.nodos[0]).toBe('1')
+  })
+
   it('al desmontar cancela la descarga en curso', async () => {
     let senal
     obtenerCallesYPuntosReunion.mockImplementation((coordenadas, opciones) => {

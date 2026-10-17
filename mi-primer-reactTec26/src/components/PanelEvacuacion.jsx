@@ -34,7 +34,9 @@ function textoDistancia(metros) {
 // El riesgo va con palabras (no solo con el color de la línea del mapa)
 function textoRuta(resultado, sinDatosSismos) {
   const { puntoReunion, distanciaM, nivelRiesgo } = resultado
-  const destino = `${puntoReunion.tipo === 'refugio' ? 'Refugio' : 'Punto de reunión'} ${puntoReunion.nombre}`
+  const tipo = puntoReunion.tipo === 'refugio' ? 'Refugio' : 'Punto de reunión'
+  // Si OSM no le puso nombre, el nombre ya es "Punto de reunión": no se repite
+  const destino = puntoReunion.nombre === tipo ? tipo : `${tipo} ${puntoReunion.nombre}`
   const minutos = Math.ceil(distanciaM / METROS_POR_MINUTO)
   const riesgo = sinDatosSismos ? 'riesgo sísmico desconocido' : `riesgo ${nivelRiesgo}`
   return `${destino}: ${textoDistancia(distanciaM)} · unos ${minutos} min a pie · ${riesgo}`

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { obtenerUbicacionActual } from '../services/ubicacion.js'
 import { obtenerCallesYPuntosReunion } from '../services/overpass.js'
-import { construirZonaEvacuacion, nodoMasCercano } from '../utils/grafoOsm.js'
+import { construirZonaEvacuacion, nodoMasCercano, nodoMasCercanoConectado } from '../utils/grafoOsm.js'
 import { guardarZona, leerZona } from '../utils/almacenZona.js'
 import { filtrarSismosActivos } from '../utils/riesgoSismico.js'
 import { calcularRutaEvacuacion, tramoBloqueadoAPie } from '../utils/dijkstraEvacuacion.js'
@@ -28,10 +28,12 @@ const INICIAL = { fase: 'inactivo', error: null, zona: null, origen: null, preci
 // - la posición real de cada punto de reunión y su tramo desde la última esquina.
 // Cualquiera de esos tramos dentro de un bloqueo total o del radio crítico de un sismo fuerte
 // se descarta, igual que una calle.
-function calcularConZona(zona, destinos, nodoOrigen, origen, sismos, bloqueos) {
+function calcularConZona(zona, destinos, { nodoOrigen, hayCalleCerca }, origen, sismos, bloqueos) {
   try {
     if (destinos.length === 0) return { estado: 'sin-puntos' }
-    if (nodoOrigen === null) return { estado: 'lejos-de-calles' }
+    if (!hayCalleCerca) return { estado: 'lejos-de-calles' }
+    // Hay calles cerca, pero ninguna conectada con un punto de reunión o refugio
+    if (nodoOrigen === null) return { estado: 'sin-ruta', motivo: 'origen-aislado' }
 
     const sismosActivos = filtrarSismosActivos(sismos, Date.now())
     const bloqueado = (a, b) => tramoBloqueadoAPie(a, b, sismosActivos, { bloqueos })
@@ -167,15 +169,6 @@ export function useRutaEvacuacion({ sismos, bloqueos = SIN_BLOQUEOS, refugios = 
     setBusqueda(INICIAL)
   }, [])
 
-  // El nodo de calle más cercano a la persona solo cambia con una búsqueda nueva
-  const nodoOrigen = useMemo(() => {
-    if (busqueda.fase !== 'zona-lista') return null
-    try {
-      return nodoMasCercano(busqueda.zona.grafo, busqueda.origen)
-    } catch {
-      return null
-    }
-  }, [busqueda])
 
   // Destinos posibles: puntos de reunión de OSM y refugios oficiales ABIERTOS que queden
   // a ≤ 300 m de una calle descargada (los llenos o cerrados no sirven para llegar)
@@ -199,6 +192,22 @@ export function useRutaEvacuacion({ sismos, bloqueos = SIN_BLOQUEOS, refugios = 
     }
     return [...puntos, ...refugiosAbiertos]
   }, [busqueda, refugios])
+
+  // La esquina de calle donde empieza la ruta: la más cercana a la persona que SÍ está
+  // conectada con algún destino (no un andador suelto). Solo cambia con otra búsqueda
+  // o si cambian los destinos.
+  const nodoOrigen = useMemo(() => {
+    if (busqueda.fase !== 'zona-lista') return null
+    try {
+      const { grafo } = busqueda.zona
+      return {
+        hayCalleCerca: nodoMasCercano(grafo, busqueda.origen) !== null,
+        nodoOrigen: nodoMasCercanoConectado(grafo, busqueda.origen, destinos.map((d) => d.nodoId)),
+      }
+    } catch {
+      return { hayCalleCerca: false, nodoOrigen: null }
+    }
+  }, [busqueda, destinos])
 
   // La ruta depende de la zona, del origen, de los destinos y de los sismos y bloqueos ACTUALES
   const calculo = useMemo(() => {
