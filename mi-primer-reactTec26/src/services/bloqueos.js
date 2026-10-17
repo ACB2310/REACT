@@ -64,13 +64,20 @@ export async function eliminarBloqueo(id) {
   await pedirASupabase((cliente) => cliente.rpc('eliminar_bloqueo', { p_id: id }))
 }
 
-// Avisa con `alCambiar()` cada vez que alguien crea, renueva o elimina un bloqueo.
+// Solo un coordinador puede confirmar un bloqueo (el servidor lo revisa)
+export async function confirmarBloqueo(id) {
+  await pedirASupabase((cliente) => cliente.rpc('confirmar_bloqueo', { p_id: id }))
+}
+
+// Avisa con `alCambiar()` cada vez que alguien crea, renueva, confirma o elimina un bloqueo.
 // Devuelve una función para dejar de escuchar.
+// El servidor solo manda "cambió el bloqueo N" por el canal público bloqueos-cambios
+// (migración 4): así nadie recibe datos de quién reportó. La app vuelve a pedir la vista.
 export function suscribirseABloqueos(alCambiar) {
   const cliente = obtenerCliente()
   const canal = cliente
     .channel('bloqueos-cambios')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'bloqueos' }, () => alCambiar())
+    .on('broadcast', { event: 'cambio' }, () => alCambiar())
     .subscribe()
   return () => {
     cliente.removeChannel(canal)

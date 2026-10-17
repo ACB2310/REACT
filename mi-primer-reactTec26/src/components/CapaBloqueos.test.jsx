@@ -84,6 +84,37 @@ describe('CapaBloqueos', () => {
     expect(botones(tocar(mapa, bloqueo()))).toEqual(['Renovar 24 h', 'Eliminar'])
   })
 
+  // Migración 4: solo un coordinador puede confirmar (el servidor lo vuelve a revisar)
+  it('un coordinador ve Confirmar en un bloqueo sin confirmar', () => {
+    const mapa = crearMapaFalso()
+    render(<CapaBloqueos mapa={mapa} bloqueos={COLECCION} rol="coordinador" />)
+    expect(botones(tocar(mapa, bloqueo()))).toEqual(['Renovar 24 h', 'Eliminar', 'Confirmar'])
+  })
+
+  it('un bloqueo ya confirmado no muestra Confirmar', () => {
+    const mapa = crearMapaFalso()
+    render(<CapaBloqueos mapa={mapa} bloqueos={COLECCION} rol="coordinador" />)
+    expect(botones(tocar(mapa, bloqueo({ confirmado: true })))).toEqual(['Renovar 24 h', 'Eliminar'])
+  })
+
+  it('un brigadista o ciudadano nunca ve Confirmar', () => {
+    const mapa = crearMapaFalso()
+    render(<CapaBloqueos mapa={mapa} bloqueos={COLECCION} rol="brigadista" />)
+    expect(botones(tocar(mapa, bloqueo()))).not.toContain('Confirmar')
+  })
+
+  it('Confirmar llama alConfirmar(id) y cierra el popup', async () => {
+    const mapa = crearMapaFalso()
+    const alConfirmar = vi.fn().mockResolvedValue(undefined)
+    render(<CapaBloqueos mapa={mapa} bloqueos={COLECCION} rol="coordinador" alConfirmar={alConfirmar} />)
+
+    const popup = tocar(mapa, bloqueo())
+    ;[...popup.contenido.querySelectorAll('button')].find((b) => b.textContent === 'Confirmar').click()
+
+    expect(alConfirmar).toHaveBeenCalledWith(10)
+    await vi.waitFor(() => expect(popup.abierto).toBe(false))
+  })
+
   it('Renovar llama alRenovar(id) y cierra el popup', async () => {
     const mapa = crearMapaFalso()
     const alRenovar = vi.fn().mockResolvedValue(undefined)

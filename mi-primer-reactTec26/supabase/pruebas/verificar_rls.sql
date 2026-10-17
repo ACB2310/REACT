@@ -1,10 +1,10 @@
 -- Verificación de seguridad de la etapa 3 (RLS, permisos y reglas de bloqueos).
 --
 -- Cómo usarlo: pega TODO el archivo en el SQL Editor de Supabase y ejecútalo
--- DESPUÉS de aplicar las migraciones 1, 2 y 3.
+-- DESPUÉS de aplicar las migraciones 1 a 4.
 --
 -- El script TERMINA A PROPÓSITO CON UN ERROR que trae el resumen, por ejemplo:
---   ERROR: RESULTADO: 18 de 18 casos OK
+--   ERROR: RESULTADO: 27 de 27 casos OK
 -- El error deshace todo, así que no queda ningún usuario ni bloqueo de prueba.
 -- Si algún caso falla, el mensaje dice cuáles.
 
@@ -182,8 +182,9 @@ select pg_temp.como(null);
 select pg_temp.anotar('10a. Sin sesión no se ven bloqueos vencidos',
   not exists (select 1 from public.bloqueos_vista where longitud between -103.40 and -103.29));
 select pg_temp.como('00000000-0000-0000-0000-0000000000c1');
+-- (Desde la migración 4 nadie puede leer reportado_por en la tabla: se revisa por la vista)
 select pg_temp.anotar('10b. El coordinador tampoco ve vencidos',
-  not exists (select 1 from public.bloqueos where reportado_por = '00000000-0000-0000-0000-00000000000a'));
+  not exists (select 1 from public.bloqueos_vista where longitud between -103.40 and -103.29));
 
 -- ---------------------------------------------------------------------------
 -- Roles y refugios
@@ -209,6 +210,79 @@ select pg_temp.anotar('13. El coordinador ubica un refugio en [longitud, latitud
 select pg_temp.como(null);
 select pg_temp.debe_fallar('14. Sin sesión no se puede reportar',
   $q$ select public.reportar_bloqueo(-103.35, 20.67, 'total') $q$, 'permission denied');
+
+-- ---------------------------------------------------------------------------
+-- Migración 4: confirmar, ocultar quién reportó y límites contra reportes falsos.
+-- Se usa otra ciudad (CDMX) para no mezclarse con los bloqueos de arriba.
+--   D, E y F: anónimos nuevos
+-- ---------------------------------------------------------------------------
+reset role;
+insert into auth.users (id, email, is_anonymous) values
+  ('00000000-0000-0000-0000-00000000000d', null, true),
+  ('00000000-0000-0000-0000-00000000000e', null, true),
+  ('00000000-0000-0000-0000-00000000000f', null, true);
+
+select pg_temp.como('00000000-0000-0000-0000-00000000000d', true);
+select public.reportar_bloqueo(-99.1332, 19.4326, 'total', 'Prueba migración 4');
+reset role;
+create temp table bloqueo_de_d as
+  select id from public.bloqueos where descripcion = 'Prueba migración 4';
+grant select on bloqueo_de_d to authenticated, anon;
+
+-- Caso 15: un ciudadano (aunque sea quien lo reportó) no puede confirmar
+select pg_temp.como('00000000-0000-0000-0000-00000000000d', true);
+select pg_temp.debe_fallar('15. Un ciudadano no puede confirmar un bloqueo',
+  $q$ select public.confirmar_bloqueo((select id from bloqueo_de_d)) $q$, 'SIN_PERMISO');
+
+-- Caso 16: el coordinador sí
+select pg_temp.como('00000000-0000-0000-0000-0000000000c1');
+select public.confirmar_bloqueo((select id from bloqueo_de_d));
+select pg_temp.anotar('16. El coordinador confirma un bloqueo',
+  exists (select 1 from public.bloqueos_vista where id = (select id from bloqueo_de_d) and confirmado));
+
+-- Caso 17: nadie puede leer quién reportó, ni sin sesión ni con sesión
+select pg_temp.como(null);
+select pg_temp.debe_fallar('17a. Sin sesión no se puede leer reportado_por',
+  $q$ select reportado_por from public.bloqueos $q$, 'permission denied');
+select pg_temp.como('00000000-0000-0000-0000-00000000000e', true);
+select pg_temp.debe_fallar('17b. Con sesión tampoco se puede leer reportado_por',
+  $q$ select reportado_por from public.bloqueos $q$, 'permission denied');
+
+-- Caso 18: "es mío" sigue funcionando en la vista (D sí, E no)
+select pg_temp.anotar('18a. E no ve como suyo el bloqueo de D',
+  exists (select 1 from public.bloqueos_vista where id = (select id from bloqueo_de_d) and not es_mio));
+select pg_temp.como('00000000-0000-0000-0000-00000000000d', true);
+select pg_temp.anotar('18b. D ve como suyo su bloqueo',
+  exists (select 1 from public.bloqueos_vista where id = (select id from bloqueo_de_d) and es_mio));
+
+-- Caso 19: máximo 10 reportes sin confirmar de ciudadanos por hora a 1 km o menos.
+-- D lleva 1 (confirmado: no cuenta). D suma 4, E suma 5 → 9 sin confirmar; F pone el 10.º
+-- y el 11.º se rechaza aunque F sea "nuevo".
+select public.reportar_bloqueo(-99.1335, 19.4330, 'total');
+select public.reportar_bloqueo(-99.1340, 19.4334, 'total');
+select public.reportar_bloqueo(-99.1345, 19.4338, 'total');
+select public.reportar_bloqueo(-99.1350, 19.4342, 'total');
+select pg_temp.como('00000000-0000-0000-0000-00000000000e', true);
+select public.reportar_bloqueo(-99.1330, 19.4320, 'total');
+select public.reportar_bloqueo(-99.1325, 19.4316, 'total');
+select public.reportar_bloqueo(-99.1320, 19.4312, 'total');
+select public.reportar_bloqueo(-99.1315, 19.4308, 'total');
+select public.reportar_bloqueo(-99.1310, 19.4304, 'total');
+select pg_temp.como('00000000-0000-0000-0000-00000000000f', true);
+select public.reportar_bloqueo(-99.1336, 19.4322, 'total');
+select pg_temp.debe_fallar('19a. El 11.º reporte sin confirmar en 1 km se rechaza',
+  $q$ select public.reportar_bloqueo(-99.1337, 19.4323, 'total') $q$, 'LIMITE_ZONA');
+-- A más de 1 km (Coyoacán, ~9 km) sí se puede
+select pg_temp.anotar('19b. Lejos de esa zona sí se puede reportar',
+  public.reportar_bloqueo(-99.1620, 19.3500, 'total') is not null);
+
+-- Caso 20: un ciudadano ya no puede renovar su reporte después de 48 h
+reset role;
+update public.bloqueos set creado_en = now() - interval '49 hours'
+where id = (select id from bloqueo_de_d);
+select pg_temp.como('00000000-0000-0000-0000-00000000000d', true);
+select pg_temp.debe_fallar('20. Un ciudadano no renueva un reporte de más de 48 h',
+  $q$ select public.renovar_bloqueo((select id from bloqueo_de_d)) $q$, 'RENOVACION_LIMITE');
 
 -- ---------------------------------------------------------------------------
 -- Resumen. Este error es a propósito: deshace todo lo de arriba.

@@ -5,6 +5,7 @@ import {
   renovarBloqueo,
   eliminarBloqueo,
   suscribirseABloqueos,
+  confirmarBloqueo,
 } from './bloqueos.js'
 import { obtenerCliente } from './supabase.js'
 import { crearSupabaseFalso } from '../test/supabaseFalso.js'
@@ -89,12 +90,28 @@ describe('renovar y eliminar', () => {
   })
 })
 
+describe('confirmarBloqueo', () => {
+  it('llama a la función confirmar_bloqueo con el id', async () => {
+    await confirmarBloqueo(10)
+    expect(cliente.rpc).toHaveBeenCalledWith('confirmar_bloqueo', { p_id: 10 })
+  })
+
+  it('si no es coordinador da SIN_PERMISO en español', async () => {
+    cliente.respuestas.rpc.confirmar_bloqueo = { data: null, error: { message: 'SIN_PERMISO' } }
+    await expect(confirmarBloqueo(10)).rejects.toThrow('No tienes permiso para hacer esto.')
+  })
+})
+
 describe('suscribirseABloqueos', () => {
-  it('avisa cuando cambia la tabla y se puede cancelar', () => {
+  // Migración 4: la tabla ya no se publica completa (traía reportado_por);
+  // el servidor solo avisa "cambió el bloqueo N" por el canal público bloqueos-cambios
+  it('escucha el aviso "cambio" del canal bloqueos-cambios y se puede cancelar', () => {
     const alCambiar = vi.fn()
     const cancelar = suscribirseABloqueos(alCambiar)
 
-    expect(cliente.canales[0].manejadores[0].filtro).toEqual({ event: '*', schema: 'public', table: 'bloqueos' })
+    expect(cliente.canales[0].nombre).toBe('bloqueos-cambios')
+    expect(cliente.canales[0].manejadores[0].tipo).toBe('broadcast')
+    expect(cliente.canales[0].manejadores[0].filtro).toEqual({ event: 'cambio' })
     cliente.simularCambio()
     expect(alCambiar).toHaveBeenCalledTimes(1)
 

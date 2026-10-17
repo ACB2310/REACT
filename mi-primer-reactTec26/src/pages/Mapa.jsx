@@ -17,7 +17,7 @@ import { useSatelite } from '../hooks/useSatelite.js'
 import { useRefugios } from '../hooks/useRefugios.js'
 import { useBloqueos } from '../hooks/useBloqueos.js'
 import { useSesion } from '../hooks/useSesion.js'
-import { renovarBloqueo, eliminarBloqueo } from '../services/bloqueos.js'
+import { renovarBloqueo, eliminarBloqueo, confirmarBloqueo } from '../services/bloqueos.js'
 import { formatearFechaHora } from '../utils/fechas.js'
 import { AVISO_OFICIAL } from '../utils/avisos.js'
 import './Mapa.css'
@@ -83,6 +83,10 @@ function Mapa() {
   }
   async function alEliminarBloqueo(id) {
     await eliminarBloqueo(id)
+    bloqueos.recargar({ silencioso: true })
+  }
+  async function alConfirmarBloqueo(id) {
+    await confirmarBloqueo(id)
     bloqueos.recargar({ silencioso: true })
   }
 
@@ -243,6 +247,7 @@ function Mapa() {
           rol={rol}
           alRenovar={alRenovarBloqueo}
           alEliminar={alEliminarBloqueo}
+          alConfirmar={alConfirmarBloqueo}
         />
         <PanelCapas capas={capas} alCambiar={cambiarCapa} />
         <Link to="/reportar" className="boton-reportar">

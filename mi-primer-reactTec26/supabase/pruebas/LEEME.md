@@ -7,7 +7,7 @@
 3. El script termina **a propósito** con un error que trae el resumen:
 
    ```
-   ERROR: RESULTADO: 18 de 18 casos OK
+   ERROR: RESULTADO: 27 de 27 casos OK
    ```
 
    Ese error deshace todo: no quedan usuarios ni bloqueos de prueba.
