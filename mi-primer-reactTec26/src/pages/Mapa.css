@@ -608,6 +608,15 @@
   opacity: 0.7;
 }
 
+/* ---------- Solo celular (la computadora no cambia) ---------- */
+@media (max-width: 899px) {
+  /* Al abrir, MapLibre muestra los créditos del mapa en dos renglones (luego se encogen al
+     botón ⓘ): el botón de reportar va arriba de ellos para no taparlos */
+  .boton-reportar {
+    bottom: 64px;
+  }
+}
+
 /* ---------- Escritorio: panel a la izquierda y mapa a la derecha ---------- */
 @media (min-width: 900px) {
   .pantalla-mapa {

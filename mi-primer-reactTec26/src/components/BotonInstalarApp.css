@@ -39,14 +39,16 @@
   gap: 4px;
 }
 
+/* "Ahora no": una ✕ de 44 × 44 px (fácil de tocar y no ocupa casi nada) */
 .boton-ahora-no {
+  width: 44px;
   min-height: 44px;
-  padding: 0 12px;
+  padding: 0;
   border: none;
   background: none;
   color: var(--texto-suave);
   font: inherit;
-  font-size: 0.875rem;
+  font-size: 1.25rem;
   font-weight: 700;
   cursor: pointer;
 }

@@ -433,6 +433,15 @@
   outline-offset: 2px;
 }
 
+/* Solo celular: en el mapa chico los créditos ocupan todo lo ancho de abajo; el botón
+   va arriba a la izquierda (arriba a la derecha están los botones + y −) */
+@media (max-width: 899px) {
+  .boton-sobre-mapa {
+    top: 12px;
+    bottom: auto;
+  }
+}
+
 /* Confirmación de que el punto quedó marcado */
 .punto-marcado {
   color: #15803d;

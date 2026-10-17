@@ -41,19 +41,19 @@ function BotonInstalarApp() {
   return (
     <aside className="aviso-instalacion" aria-label="Instalar aplicación" role="status">
       <div>
-        <strong>Alerta México en tu dispositivo</strong>
+        <strong>Instala Alerta México</strong>
         <p>
           {mostrarAyuda
             ? 'Abre el menú del navegador y elige “Instalar Alerta México”.'
-            : 'Instálala para abrir el mapa más rápido, también sin señal.'}
+            : 'Abre más rápido y sirve sin señal.'}
         </p>
       </div>
       <div className="aviso-instalacion-botones">
         <button type="button" className="boton-instalar" onClick={alInstalar} disabled={instalando}>
           {instalando ? 'Abriendo instalación…' : 'Instalar app'}
         </button>
-        <button type="button" className="boton-ahora-no" onClick={alCerrar}>
-          Ahora no
+        <button type="button" className="boton-ahora-no" onClick={alCerrar} aria-label="Ahora no" title="Ahora no">
+          <span aria-hidden="true">✕</span>
         </button>
       </div>
     </aside>
