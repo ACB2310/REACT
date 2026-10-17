@@ -432,13 +432,14 @@ describe('ruta combinada (carro + a pie)', () => {
     expect(ors.pedirIsocrona).not.toHaveBeenCalled()
   })
 
-  it('si la combinada falla por un error de ORS, se responde el "sin ruta" original', async () => {
+  it('si la combinada no sale por un error de ORS, se da la ruta a pie', async () => {
     const ors = orsFalso()
     ors.pedirIsocrona.mockImplementation(async () => {
       throw new ErrorRutas('ORS_LIMITE')
     })
     const resultado = await planificarRuta({ origen: ORIGEN, modo: 'carro', refugios, bloqueos: [], zonas: [], ...ors })
-    expect(resultado).toEqual({ estado: 'sin-ruta', motivo: 'bloqueada' })
+    expect(resultado.modo).toBe('a_pie')
+    expect(resultado.sinPasoEnCarro).toBe(true)
   })
 
   it('sin pedirIsocrona (versión vieja de la función) responde el "sin ruta" de siempre', async () => {
@@ -536,7 +537,8 @@ describe('ruta combinada: correcciones de la revisión', () => {
     const resultado = await planificarRuta({
       origen: ORIGEN, modo: 'carro', refugios, bloqueos: [], zonas: [], pedirMatriz, pedirRuta, pedirIsocrona: async () => isocrona,
     })
-    expect(resultado).toEqual({ estado: 'sin-ruta', motivo: 'bloqueada' })
+    // La combinada se descarta; queda la ruta a pie desde donde está la persona
+    expect(resultado.modo).not.toBe('combinada')
   })
 
   it('el tramo en carro no termina con "Llegaste": sigue la instrucción de bajarse', async () => {
@@ -555,5 +557,101 @@ describe('ruta combinada: correcciones de la revisión', () => {
     const bajarse = pasos.indexOf(INSTRUCCION_TRANSBORDO)
     expect(pasos[bajarse - 1]).not.toBe('Llegaste')
     expect(pasos.at(-1)).toBe('Llegaste')
+  })
+})
+
+describe('si en carro no hay paso, se cambia de transporte', () => {
+  const REFUGIO = [-103.30, 20.67]
+  const refugios = [refugio(1, ...REFUGIO)]
+  const isocrona = {
+    type: 'Polygon',
+    coordinates: [
+      Array.from({ length: 49 }, (_, k) => {
+        const angulo = ((k % 48) / 48) * 2 * Math.PI
+        return [REFUGIO[0] + 0.008 * Math.cos(angulo), REFUGIO[1] + 0.008 * Math.sin(angulo)]
+      }),
+    ],
+  }
+  const recta = (origen, destino, segundosPorKm) =>
+    rutaOrs([origen, destino], distanciaKm(origen, destino) * segundosPorKm, distanciaKm(origen, destino) * 1000)
+  const matriz = vi.fn(async (perfil, puntos) => {
+    const [desde, ...hacia] = puntos
+    return hacia.map((p) => distanciaKm(desde, p) * (perfil === 'driving-car' ? 90 : 720))
+  })
+  const evita = (avoid, punto) => (avoid?.coordinates ?? []).some(([anillo]) => puntoEnAnillo(punto, anillo))
+
+  // Bloqueo parcial a la MITAD del camino (a 3 km del refugio), en la única calle:
+  // en carro no se pasa de ahí, a pie sí
+  it('con un bloqueo parcial lejos del refugio, el carro llega hasta el bloqueo y de ahí a pie', async () => {
+    const BLOQUEO = [-103.33, 20.67]
+    const pedirRuta = vi.fn(async (perfil, origen, destino, avoid) => {
+      if (perfil === 'driving-car' && destino[0] > BLOQUEO[0] && evita(avoid, BLOQUEO)) throw new ErrorRutas('SIN_RUTA')
+      return recta(origen, destino, perfil === 'driving-car' ? 90 : 720)
+    })
+    const resultado = await planificarRuta({
+      origen: ORIGEN,
+      modo: 'carro',
+      refugios,
+      bloqueos: [bloqueo(3, 'solo_vehiculos', ...BLOQUEO)],
+      zonas: [],
+      pedirMatriz: matriz,
+      pedirRuta,
+      pedirIsocrona: async () => isocrona,
+    })
+    expect(resultado.modo).toBe('combinada')
+    expect(resultado.transbordo[0]).toBeLessThan(BLOQUEO[0])
+    expect(distanciaKm(resultado.transbordo, BLOQUEO)).toBeGreaterThan(0.025)
+    // A pie sí pasa por el bloqueo parcial
+    expect(lineaTocaAnillo(resultado.ruta.features[1].geometry.coordinates, circuloAlrededor(BLOQUEO))).toBe(true)
+  })
+
+  it('si falla la isócrona, igual se usa el punto hasta donde sí llega el carro', async () => {
+    const BLOQUEO = [-103.304, 20.67]
+    const pedirRuta = vi.fn(async (perfil, origen, destino, avoid) => {
+      if (perfil === 'driving-car' && destino[0] > BLOQUEO[0] - 0.0003 && evita(avoid, BLOQUEO)) throw new ErrorRutas('SIN_RUTA')
+      return recta(origen, destino, perfil === 'driving-car' ? 90 : 720)
+    })
+    const resultado = await planificarRuta({
+      origen: ORIGEN,
+      modo: 'carro',
+      refugios,
+      bloqueos: [bloqueo(3, 'solo_vehiculos', ...BLOQUEO)],
+      zonas: [],
+      pedirMatriz: matriz,
+      pedirRuta,
+      pedirIsocrona: async () => {
+        throw new ErrorRutas('ORS_ERROR')
+      },
+    })
+    expect(resultado.modo).toBe('combinada')
+    expect(resultado.transbordo[0]).toBeLessThan(BLOQUEO[0])
+  })
+
+  // Si el carro no puede avanzar nada (o no sale ninguna combinada), la ruta a pie
+  it('si no sale ninguna combinada, da la ruta a pie y avisa que en carro no hay paso', async () => {
+    const pedirRuta = vi.fn(async (perfil, origen, destino) => {
+      if (perfil === 'driving-car') throw new ErrorRutas('SIN_RUTA')
+      return recta(origen, destino, 720)
+    })
+    const resultado = await planificarRuta({
+      origen: ORIGEN, modo: 'carro', refugios, bloqueos: [], zonas: [], pedirMatriz: matriz, pedirRuta, pedirIsocrona: async () => isocrona,
+    })
+    expect(resultado.estado).toBe('ruta')
+    expect(resultado.modo).toBe('a_pie')
+    expect(resultado.sinPasoEnCarro).toBe(true)
+    expect(resultado.ruta.properties.modo).toBe('a_pie')
+  })
+
+  it('cuenta en el registro qué se intentó (para los Logs de la función)', async () => {
+    const registrar = vi.fn()
+    const pedirRuta = vi.fn(async (perfil, origen, destino) => {
+      if (perfil === 'driving-car') throw new ErrorRutas('SIN_RUTA')
+      return recta(origen, destino, 720)
+    })
+    await planificarRuta({
+      origen: ORIGEN, modo: 'carro', refugios, bloqueos: [], zonas: [], pedirMatriz: matriz, pedirRuta, pedirIsocrona: async () => isocrona, registrar,
+    })
+    const eventos = registrar.mock.calls.map(([evento]) => evento.paso)
+    expect(eventos).toEqual(expect.arrayContaining(['directa', 'combinada', 'a-pie']))
   })
 })

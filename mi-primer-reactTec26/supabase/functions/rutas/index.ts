@@ -10,7 +10,8 @@
 //            con la sesión de la persona (también anónima): supabase.functions.invoke('rutas')
 // Respuesta: { estado: 'ruta', destino, ruta, resumen, evitados, origenEnZona, consultadoEn }
 //            En carro, si el vehículo no llega (etapa 5): modo 'combinada', con `ruta` como
-//            FeatureCollection de 2 tramos, `transbordo` y `tramos`.
+//            FeatureCollection de 2 tramos, `transbordo` y `tramos`; y si tampoco sale,
+//            la ruta a pie con `sinPasoEnCarro: true`.
 //            { estado: 'sin-ruta', motivo, consultadoEn }
 //            o un error { codigo } con su estado HTTP
 
@@ -173,6 +174,8 @@ Deno.serve(async (peticion) => {
       bloqueos: bloqueos.data ?? [],
       zonas: zonas.data ?? [],
       ...crearPedidosOrs(terminaEn),
+      // Qué se intentó en cada paso (se ve en Supabase → Edge Functions → rutas → Logs)
+      registrar: (evento) => console.log('rutas', JSON.stringify(evento)),
     })
     return responder({ ...resultado, consultadoEn: new Date().toISOString() })
   } catch (error) {

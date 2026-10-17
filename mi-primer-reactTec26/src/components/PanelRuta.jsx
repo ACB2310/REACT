@@ -83,6 +83,14 @@ function PanelRuta({ ruta, evacuacion, modo, alCambiarModo, sinDatosBloqueos }) 
         </div>
       )}
 
+      {listo && resultado.sinPasoEnCarro && (
+        <div className="mensaje-estado mensaje-aviso" role="alert">
+          <p>
+            En carro no hay paso a ningún refugio cercano. Esta es la ruta a pie (a pie sí se pasan los bloqueos parciales).
+          </p>
+        </div>
+      )}
+
       {listo && resultado.origenEnZona && (
         <div className="mensaje-estado mensaje-aviso" role="alert">
           <p>Estás dentro de una zona de peligro: sal de ella por la ruta indicada.</p>

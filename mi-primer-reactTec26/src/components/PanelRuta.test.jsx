@@ -69,6 +69,20 @@ describe('PanelRuta', () => {
     expect(screen.getByRole('button', { name: 'Quitar ruta' })).toBeInTheDocument()
   })
 
+  it('si en carro no hay paso y la función dio la ruta a pie, lo avisa', () => {
+    const aPie = {
+      ...RESULTADO,
+      modo: 'a_pie',
+      sinPasoEnCarro: true,
+      ruta: { ...RESULTADO.ruta, properties: { modo: 'a_pie' } },
+    }
+    mostrar({ ruta: ruta({ estado: 'listo', resultado: aPie, origen: ORIGEN }), modo: 'carro' })
+    expect(
+      screen.getByText('En carro no hay paso a ningún refugio cercano. Esta es la ruta a pie (a pie sí se pasan los bloqueos parciales).'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Refugio Escuela Juárez: 12 min a pie · 4.3 km')).toBeInTheDocument()
+  })
+
   describe('ruta combinada (el carro no llega al refugio)', () => {
     const TRANSBORDO = [-103.342, 20.678]
     const COMBINADA = {

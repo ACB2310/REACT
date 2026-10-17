@@ -300,21 +300,35 @@ export class ErrorRutas extends Error {
 // a cada uno de los demás; `pedirRuta(perfil, origen, destino, avoid)` devuelve la
 // Feature de ORS o lanza ErrorRutas('SIN_RUTA'). Se inyectan para poder probar sin red.
 // ---------------------------------------------------------------------------
-export async function planificarRuta({ origen, modo, refugios, bloqueos, zonas, pedirMatriz, pedirRuta, pedirIsocrona }) {
+//
+// `registrar(evento)` (opcional) recibe qué se intentó en cada paso: la función lo manda a
+// sus Logs para poder ver por qué no salió una ruta.
+export async function planificarRuta({ origen, modo, refugios, bloqueos, zonas, pedirMatriz, pedirRuta, pedirIsocrona, registrar = () => {} }) {
   const directa = await planificarRutaDirecta({ origen, modo, refugios, bloqueos, zonas, pedirMatriz, pedirRuta })
+  registrar({ paso: 'directa', modo, estado: directa.estado, motivo: directa.motivo ?? null })
 
-  // Etapa 5: en carro, si el vehículo no llega a ningún refugio, se busca dónde bajarse.
-  // Si la combinada tampoco sale (o falla ORS), se responde el "sin ruta" original.
+  // Etapa 5: en carro, si el vehículo no llega a ningún refugio, se cambia de transporte:
+  // 1. en carro hasta donde se pueda y de ahí a pie (ruta combinada);
+  // 2. si no sale, la ruta a pie desde donde está la persona (a pie los bloqueos parciales se cruzan).
   const sinCaminoEnCarro = modo === 'carro' && directa.estado === 'sin-ruta' && directa.motivo !== 'sin-refugios'
   if (!sinCaminoEnCarro || !pedirIsocrona) return directa
+
   try {
-    const combinada = await planificarRutaCombinada({ origen, refugios, bloqueos, zonas, pedirMatriz, pedirRuta, pedirIsocrona })
-    return combinada ?? directa
+    const combinada = await planificarRutaCombinada({ origen, refugios, bloqueos, zonas, pedirMatriz, pedirRuta, pedirIsocrona, registrar })
+    registrar({ paso: 'combinada', estado: combinada ? 'ruta' : 'sin-ruta' })
+    if (combinada) return combinada
   } catch (error) {
-    // Un error de ORS (límite, caída) deja el "sin ruta" de siempre; uno inesperado se registra
-    if (!(error instanceof ErrorRutas)) console.error('Error inesperado en la ruta combinada', error)
-    return directa
+    registrar({ paso: 'combinada', error: error?.codigo ?? String(error?.message ?? error) })
   }
+
+  try {
+    const aPie = await planificarRutaDirecta({ origen, modo: 'a_pie', refugios, bloqueos, zonas, pedirMatriz, pedirRuta })
+    registrar({ paso: 'a-pie', estado: aPie.estado, motivo: aPie.motivo ?? null })
+    if (aPie.estado === 'ruta') return { ...aPie, sinPasoEnCarro: true }
+  } catch (error) {
+    registrar({ paso: 'a-pie', error: error?.codigo ?? String(error?.message ?? error) })
+  }
+  return directa
 }
 
 // La ruta normal: un solo tramo, a pie o en carro, al refugio al que se llega más rápido
@@ -436,20 +450,36 @@ export function puntoAntesDeObstaculo(linea, obstaculos) {
 }
 
 // El "punto más cercano al que sí llega" el carro (ver arriba). null si no hay.
+// Primero se ignoran solo los obstáculos de los alrededores del refugio (así el carro
+// rodea los demás y llega lo más cerca posible); si así no hay ruta, se ignoran TODOS:
+// el carro va por el camino normal y se detiene antes del primer obstáculo.
 async function candidatoDeCorte(destino, { origen, bloqueos, zonas, pedirRuta }) {
   const alrededores = agrandarCaja(cajaDe([destino.posicion]), RADIO_CORTE_KM)
   const cerca = (o) => cajasSeTocan(cajaDe(o.anillo), alrededores)
-  const obstaculos = obstaculosParaRuta({ bloqueos, zonas, modo: 'carro', origen, destino: destino.posicion, sinEvitar: cerca })
-  let ruta
-  try {
-    ruta = await pedirRuta(PERFILES.carro, origen, destino.posicion, obstaculos.avoid)
-  } catch (error) {
-    if (error?.codigo === 'SIN_RUTA') return null
-    throw error
+  for (const sinEvitar of [cerca, () => true]) {
+    const obstaculos = obstaculosParaRuta({ bloqueos, zonas, modo: 'carro', origen, destino: destino.posicion, sinEvitar })
+    let ruta
+    try {
+      ruta = await pedirRuta(PERFILES.carro, origen, destino.posicion, obstaculos.avoid)
+    } catch (error) {
+      if (error?.codigo === 'SIN_RUTA') continue
+      throw error
+    }
+    const punto = puntoAntesDeObstaculo(ruta?.geometry?.coordinates ?? [], obstaculos.todos)
+    if (punto && puntoSeguroParaBajar(punto, bloqueos, zonas)) return { destino, punto }
   }
-  const punto = puntoAntesDeObstaculo(ruta?.geometry?.coordinates ?? [], obstaculos.todos)
-  if (!punto || !puntoSeguroParaBajar(punto, bloqueos, zonas)) return null
-  return { destino, punto }
+  return null
+}
+
+// Una búsqueda de candidatos que falla (por ejemplo, ORS no responde la isócrona) no debe
+// tumbar a las demás: se registra y se sigue con lo que haya
+async function sinTumbarLasDemas(promesa, registrar, paso, vacio) {
+  try {
+    return await promesa
+  } catch (error) {
+    registrar({ paso, error: error?.codigo ?? String(error?.message ?? error) })
+    return vacio
+  }
 }
 
 // Candidatos de la isócrona con su tiempo estimado por las matrices:
@@ -519,14 +549,19 @@ async function rutaCombinadaReal({ destino, punto }, { origen, bloqueos, zonas, 
 }
 
 // Devuelve la mejor ruta combinada o null si no hay ninguna. Lanza los errores de ORS.
-export async function planificarRutaCombinada({ origen, refugios, bloqueos = [], zonas = [], pedirMatriz, pedirRuta, pedirIsocrona }) {
+export async function planificarRutaCombinada({ origen, refugios, bloqueos = [], zonas = [], pedirMatriz, pedirRuta, pedirIsocrona, registrar = () => {} }) {
   const destinos = refugiosCandidatos(origen, refugios, zonas, DESTINOS_COMBINADA)
   if (destinos.length === 0) return null
 
   const [cortes, deIsocronas] = await Promise.all([
-    Promise.all(destinos.map((destino) => candidatoDeCorte(destino, { origen, bloqueos, zonas, pedirRuta }))),
-    candidatosDeIsocronas(destinos, { origen, bloqueos, zonas, pedirMatriz, pedirIsocrona }),
+    Promise.all(
+      destinos.map((destino) =>
+        sinTumbarLasDemas(candidatoDeCorte(destino, { origen, bloqueos, zonas, pedirRuta }), registrar, 'corte', null),
+      ),
+    ),
+    sinTumbarLasDemas(candidatosDeIsocronas(destinos, { origen, bloqueos, zonas, pedirMatriz, pedirIsocrona }), registrar, 'isocronas', []),
   ])
+  registrar({ paso: 'candidatos', cortes: cortes.filter(Boolean).length, isocronas: deIsocronas.length })
   const aProbar = [
     ...cortes.filter(Boolean),
     ...deIsocronas.sort((a, b) => a.estimadoS - b.estimadoS).slice(0, COMBINADAS_A_PROBAR),
@@ -534,6 +569,7 @@ export async function planificarRutaCombinada({ origen, refugios, bloqueos = [],
   if (aProbar.length === 0) return null
 
   const intentos = await Promise.allSettled(aProbar.map((c) => rutaCombinadaReal(c, { origen, bloqueos, zonas, pedirRuta })))
+  registrar({ paso: 'intentos', resultados: intentos.map((i) => (i.status === 'fulfilled' ? 'ok' : (i.reason?.codigo ?? 'error'))) })
   const buenas = intentos.filter((i) => i.status === 'fulfilled').map((i) => i.value)
   if (buenas.length === 0) {
     const grave = intentos.find((i) => !['SIN_RUTA', 'CRUZA_OBSTACULO'].includes(i.reason?.codigo))
