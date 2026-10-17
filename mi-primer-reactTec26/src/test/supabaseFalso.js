@@ -37,7 +37,17 @@ export function crearSupabaseFalso({ sesionInicial = null } = {}) {
     respuestas,
     canales,
     from: vi.fn((vista) => consulta(vista)),
-    rpc: vi.fn(async (nombre) => respuestas.rpc[nombre] ?? { data: null, error: null }),
+    // rpc() también es encadenable: rpc('mi_asignacion').abortSignal(signal)
+    rpc: vi.fn((nombre) => {
+      const constructor = {
+        then(resolver, rechazar) {
+          const respuesta = respuestas.rpc[nombre] ?? { data: null, error: null }
+          return Promise.resolve(respuesta).then(resolver, rechazar)
+        },
+      }
+      constructor.abortSignal = vi.fn(() => constructor)
+      return constructor
+    }),
     channel: vi.fn((nombre) => {
       const canal = {
         nombre,
