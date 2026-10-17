@@ -31,6 +31,7 @@ import { useZonasPeligro } from '../hooks/useZonasPeligro.js'
 import { renovarBloqueo, eliminarBloqueo, confirmarBloqueo } from '../services/bloqueos.js'
 import { formatearFechaHora } from '../utils/fechas.js'
 import { AVISO_OFICIAL } from '../utils/avisos.js'
+import { resumirEstadoFuentes } from '../utils/estadoFuentes.js'
 import './Mapa.css'
 
 // Arreglo vacío fijo: la ruta se recalcula cada vez que cambia el arreglo de bloqueos
@@ -63,6 +64,21 @@ function describirCiclon(ciclon) {
   if (ciclon.vientoKmh) partes.push(`${ciclon.vientoKmh} km/h`)
   if (ciclon.alertaGdacs) partes.push(`alerta GDACS ${ciclon.alertaGdacs}`)
   return partes.join(' · ')
+}
+
+// Junta lo que MensajeFuente necesita de una fuente (sismos, ciclones, refugios…).
+// `origen` es lo que devuelve su hook: { estado, error, recargar, actualizadoEn, consultadoEn }
+function datosDeFuente(clave, etiqueta, origen, hayDatos, { singular = false } = {}) {
+  return {
+    clave,
+    etiqueta,
+    singular,
+    estado: origen.estado,
+    error: origen.error,
+    hayDatos,
+    hora: horaParaMensaje(origen),
+    recargar: origen.recargar,
+  }
 }
 
 // "Protección Civil de Jalisco, lista 2026 · …": de dónde salieron los refugios del mapa
@@ -174,37 +190,106 @@ function Mapa() {
   // Solo se dice que no hay ciclones si las DOS fuentes respondieron bien y vacías
   const sinCiclones = nhc.estado === 'listo' && gdacs.estado === 'listo' && ciclones.length === 0
 
+  // Todas las fuentes con su estado, para el indicador único "Datos al día".
+  // Sin conexión no se lista ninguna: se avisa una sola vez arriba.
+  const fuentes = sinConexion
+    ? []
+    : [
+        datosDeFuente('sismos', 'los sismos', sismos, Boolean(sismos.sismos)),
+        datosDeFuente('nhc', 'los ciclones de NHC', nhc, Boolean(nhc.datos)),
+        datosDeFuente('gdacs', 'los ciclones de GDACS', gdacs, Boolean(gdacs.datos)),
+        ...(supabaseConfigurado
+          ? [
+              datosDeFuente('refugios', 'los refugios', refugios, Boolean(refugios.refugios)),
+              datosDeFuente('bloqueos', 'los bloqueos', bloqueos, Boolean(bloqueos.bloqueos)),
+            ]
+          : []),
+        ...(capas.satelite
+          ? [datosDeFuente('satelite', 'la imagen de satélite', satelite, Boolean(satelite.datos), { singular: true })]
+          : []),
+      ]
+  const resumenEstado = resumirEstadoFuentes(fuentes, { sinConexion })
+  // Los errores se ven siempre (con su botón Reintentar); "Cargando…" solo dentro del indicador
+  const fuentesConError = fuentes.filter((fuente) => fuente.estado === 'error')
+  const fuentesCargando = fuentes.filter((fuente) => fuente.estado === 'cargando')
+
+  function mensajeDe(fuente) {
+    return (
+      <MensajeFuente
+        key={fuente.clave}
+        etiqueta={fuente.etiqueta}
+        plural={!fuente.singular}
+        estado={fuente.estado}
+        error={fuente.error}
+        hayDatos={fuente.hayDatos}
+        hora={fuente.hora}
+        recargar={fuente.recargar}
+      />
+    )
+  }
+
   return (
     <div className="pantalla-mapa">
-      <header className="barra-superior">
-        <h1>Mapa en vivo</h1>
-        <PanelRuta
-          ruta={rutaRefugio}
-          evacuacion={evacuacion}
-          modo={modoRuta}
-          alCambiarModo={setModoRuta}
-          sinDatosBloqueos={bloqueos.bloqueos == null}
-        />
-        {totalSismos > 0 && (
-          <p className="conteo">
-            {totalSismos === 1 ? '1 sismo' : `${totalSismos} sismos`} en los últimos 7 días
-          </p>
-        )}
+      {/* Arriba: título, estado de los datos y lo urgente. Se mantiene corto para dejarle espacio al mapa. */}
+      <header className="mapa-cabecera">
+        <div className="mapa-cabecera-fila">
+          <h1>Mapa en vivo</h1>
+          {/* Un solo indicador en lugar de un aviso por fuente; al tocarlo se ven fuentes y horas */}
+          <details className="estado-datos">
+            <summary className={`estado-datos-resumen estado-${resumenEstado.tipo}`}>
+              <span className="estado-punto" aria-hidden="true" />
+              {resumenEstado.texto}
+            </summary>
+            <div className="estado-datos-panel">
+              {fuentesCargando.map(mensajeDe)}
+              <p className="fuente">Sismos: USGS · {horaDeFuente(sismos)}</p>
+              <p className="fuente">
+                Ciclones: NHC/NOAA · {horaDeFuente(nhc)} · GDACS · {horaDeFuente(gdacs)}
+              </p>
+              {supabaseConfigurado && (
+                <>
+                  <p className="fuente">
+                    Refugios: {fuentesDeRefugios(refugios.refugios)} · {horaDeFuente(refugios)}
+                  </p>
+                  <p className="fuente">Bloqueos: reportes ciudadanos · {horaDeFuente(bloqueos)}</p>
+                </>
+              )}
+              {capas.satelite && (
+                <p className="fuente">Satélite: NASA GIBS (GOES-East) · {horaDeFuente(satelite)}</p>
+              )}
+            </div>
+          </details>
+        </div>
+
+        {/* Ciclones activos: lo más urgente, en una banda de color */}
         {ciclones.length > 0 && (
-          <ul className="lista-ciclones" aria-label="Ciclones activos">
+          <ul className="alerta-ciclones" aria-label="Ciclones activos">
             {ciclones.map((ciclon) => (
               <li key={ciclon.id}>{describirCiclon(ciclon)}</li>
             ))}
           </ul>
         )}
-        {sinCiclones && <p className="conteo">Sin ciclones activos cerca de México según NHC y GDACS.</p>}
-        {totalBloqueos > 0 && (
-          <p className="conteo">
-            {totalBloqueos === 1 ? '1 bloqueo reportado' : `${totalBloqueos} bloqueos reportados`} en las últimas 24 h
-          </p>
-        )}
 
-        {sinConexion ? (
+        {/* Resumen en etiquetas pequeñas */}
+        <ul className="resumen-mapa" aria-label="Resumen">
+          {totalSismos > 0 && (
+            <li className="conteo">
+              {totalSismos === 1 ? '1 sismo' : `${totalSismos} sismos`} en los últimos 7 días
+            </li>
+          )}
+          {semanaSinSismos && (
+            <li className="conteo">No hay sismos de magnitud 2.5 o más en México y alrededores en los últimos 7 días.</li>
+          )}
+          {sinCiclones && <li className="conteo">Sin ciclones activos cerca de México según NHC y GDACS.</li>}
+          {totalBloqueos > 0 && (
+            <li className="conteo">
+              {totalBloqueos === 1 ? '1 bloqueo reportado' : `${totalBloqueos} bloqueos reportados`} en las últimas 24 h
+            </li>
+          )}
+        </ul>
+
+        {/* Avisos que sí hay que ver de inmediato */}
+        {sinConexion && (
           <div className="mensaje-estado mensaje-aviso" role="status">
             <p>
               {hayAlgunDato
@@ -212,90 +297,17 @@ function Mapa() {
                 : 'Sin conexión. No hay datos guardados.'}
             </p>
           </div>
-        ) : (
-          <>
-            <MensajeFuente
-              etiqueta="los sismos"
-              plural
-              estado={sismos.estado}
-              error={sismos.error}
-              hayDatos={Boolean(sismos.sismos)}
-              hora={horaParaMensaje(sismos)}
-              recargar={sismos.recargar}
-            />
-            <MensajeFuente
-              etiqueta="los ciclones de NHC"
-              plural
-              estado={nhc.estado}
-              error={nhc.error}
-              hayDatos={Boolean(nhc.datos)}
-              hora={horaParaMensaje(nhc)}
-              recargar={nhc.recargar}
-            />
-            <MensajeFuente
-              etiqueta="los ciclones de GDACS"
-              plural
-              estado={gdacs.estado}
-              error={gdacs.error}
-              hayDatos={Boolean(gdacs.datos)}
-              hora={horaParaMensaje(gdacs)}
-              recargar={gdacs.recargar}
-            />
-            {supabaseConfigurado ? (
-              <>
-                <MensajeFuente
-                  etiqueta="los refugios"
-                  plural
-                  estado={refugios.estado}
-                  error={refugios.error}
-                  hayDatos={Boolean(refugios.refugios)}
-                  hora={horaParaMensaje(refugios)}
-                  recargar={refugios.recargar}
-                />
-                <MensajeFuente
-                  etiqueta="los bloqueos"
-                  plural
-                  estado={bloqueos.estado}
-                  error={bloqueos.error}
-                  hayDatos={Boolean(bloqueos.bloqueos)}
-                  hora={horaParaMensaje(bloqueos)}
-                  recargar={bloqueos.recargar}
-                />
-              </>
-            ) : (
-              <div className="mensaje-estado mensaje-aviso" role="status">
-                <p>Refugios y bloqueos no disponibles: falta configurar Supabase.</p>
-              </div>
-            )}
-            {capas.satelite && (
-              <MensajeFuente
-                etiqueta="la imagen de satélite"
-                plural={false}
-                estado={satelite.estado}
-                error={satelite.error}
-                hayDatos={Boolean(satelite.datos)}
-                hora={horaParaMensaje(satelite)}
-                recargar={satelite.recargar}
-              />
-            )}
-          </>
         )}
-        {semanaSinSismos && (
-          <div className="mensaje-estado mensaje-info" role="status">
-            <p>No hay sismos de magnitud 2.5 o más en México y alrededores en los últimos 7 días.</p>
-          </div>
-        )}
-        {falloMapaBase && (
-          <div className="mensaje-estado mensaje-error" role="alert">
-            <p>No se pudo cargar el mapa base. Revisa tu conexión.</p>
-            <button type="button" className="boton-reintentar" onClick={reintentarMapaBase}>
-              Reintentar mapa
-            </button>
+        {fuentesConError.map(mensajeDe)}
+        {!sinConexion && !supabaseConfigurado && (
+          <div className="mensaje-estado mensaje-aviso" role="status">
+            <p>Refugios y bloqueos no disponibles: falta configurar Supabase.</p>
           </div>
         )}
       </header>
 
-      <div className="contenedor-mapa">
+      {/* El mapa ocupa todo el espacio que queda */}
+      <div className="mapa-lienzo">
         <MapaBase key={intentoMapa} alCargar={setMapa} alFallar={alFallarMapaBase} />
         <CapaSatelite mapa={mapa} hora={satelite.datos} visible={capas.satelite} />
         <CapaCiclones mapa={mapa} nhc={nhc.datos} eventosGdacs={eventosGdacsSinNhc} visible={capas.ciclones} />
@@ -322,38 +334,47 @@ function Mapa() {
           origen={rutaDibujada.origen}
           destino={rutaDibujada.destino}
         />
-        <PanelCapas capas={capas} alCambiar={cambiarCapa} extras={esPersonal ? ['incidentes'] : []} />
+
+        {/* Capas y leyenda juntas, detrás de un botón para no tapar el mapa */}
+        <details className="mapa-capas">
+          <summary className="boton-flotante">Capas</summary>
+          <div className="mapa-capas-panel">
+            <PanelCapas capas={capas} alCambiar={cambiarCapa} extras={esPersonal ? ['incidentes'] : []} />
+            <div className="leyendas">
+              <LeyendaMagnitud />
+              <LeyendaCiclones />
+              <LeyendaRefugiosBloqueos />
+              <LeyendaZonas />
+              {esPersonal && <LeyendaBrigadas />}
+            </div>
+          </div>
+        </details>
+
+        {falloMapaBase && (
+          <div className="mensaje-estado mensaje-error mapa-fallo" role="alert">
+            <p>No se pudo cargar el mapa base. Revisa tu conexión.</p>
+            <button type="button" className="boton-reintentar" onClick={reintentarMapaBase}>
+              Reintentar mapa
+            </button>
+          </div>
+        )}
+
         <Link to="/reportar" className="boton-reportar">
           Reportar bloqueo
         </Link>
       </div>
 
-      <footer className="pie">
-        <details className="leyendas">
-          <summary>Leyenda</summary>
-          <LeyendaMagnitud />
-          <LeyendaCiclones />
-          <LeyendaRefugiosBloqueos />
-          <LeyendaZonas />
-          {esPersonal && <LeyendaBrigadas />}
-        </details>
-        <p className="fuente">Sismos: USGS · {horaDeFuente(sismos)}</p>
-        <p className="fuente">
-          Ciclones: NHC/NOAA · {horaDeFuente(nhc)} · GDACS · {horaDeFuente(gdacs)}
-        </p>
-        {supabaseConfigurado && (
-          <>
-            <p className="fuente">
-              Refugios: {fuentesDeRefugios(refugios.refugios)} · {horaDeFuente(refugios)}
-            </p>
-            <p className="fuente">Bloqueos: reportes ciudadanos · {horaDeFuente(bloqueos)}</p>
-          </>
-        )}
-        {capas.satelite && (
-          <p className="fuente">Satélite: NASA GIBS (GOES-East) · {horaDeFuente(satelite)}</p>
-        )}
+      {/* Abajo (en escritorio, a la izquierda): la acción principal, al alcance del pulgar */}
+      <div className="mapa-hoja">
+        <PanelRuta
+          ruta={rutaRefugio}
+          evacuacion={evacuacion}
+          modo={modoRuta}
+          alCambiarModo={setModoRuta}
+          sinDatosBloqueos={bloqueos.bloqueos == null}
+        />
         <p className="aviso-oficial">{AVISO_OFICIAL}</p>
-      </footer>
+      </div>
     </div>
   )
 }
