@@ -294,3 +294,61 @@
 .leyenda-color-base {
   border: 2px solid #111827;
 }
+
+/* ---------- Etapa 4: ruta a refugio ---------- */
+
+/* A pie / En carro: dos botones grandes, el elegido se marca con el color principal */
+.selector-modo {
+  display: flex;
+  gap: 8px;
+}
+
+.selector-modo-opcion {
+  flex: 1 1 0;
+  min-height: 48px;
+  border: 2px solid var(--borde);
+  border-radius: 10px;
+  background-color: var(--superficie);
+  color: var(--texto);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.selector-modo-opcion[aria-pressed='true'] {
+  border-color: var(--primario);
+  background-color: var(--primario);
+  color: var(--superficie);
+}
+
+.selector-modo-opcion:focus-visible {
+  outline: 3px solid var(--texto);
+  outline-offset: 2px;
+}
+
+.boton-evacuacion:disabled,
+.selector-modo-opcion:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.pasos-ruta summary {
+  min-height: 40px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pasos-ruta ol {
+  display: grid;
+  gap: 4px;
+  padding-left: 22px;
+  font-weight: 400;
+}
+
+.enlace-mapas {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: inherit;
+  font-weight: 800;
+}
