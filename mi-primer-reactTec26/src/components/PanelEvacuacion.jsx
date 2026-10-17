@@ -10,12 +10,11 @@ const TEXTOS = {
   ubicando: 'Buscando tu ubicación…',
   descargando: 'Descargando calles y puntos de reunión de tu zona (puede tardar hasta 1 minuto)…',
   calculando: 'Calculando la ruta más segura…',
-  'sin-zona-offline':
-    'Sin conexión y sin calles guardadas de esta zona. Cuando tengas señal, toca "Ruta a punto de reunión" para guardarlas.',
 }
 
 // Estados en los que no hay ruta: se dice explícitamente (CLAUDE.md)
 const TEXTOS_SIN_RUTA = {
+  'sin-zona-offline': `Sin conexión y sin calles guardadas de esta zona. Cuando tengas señal, toca "Ruta a punto de reunión" para guardarlas. ${SIGUE_A_PROTECCION_CIVIL}`,
   'sin-puntos': `No hay puntos de reunión ni refugios abiertos registrados cerca de ti. ${SIGUE_A_PROTECCION_CIVIL}`,
   'lejos-de-calles': `Estás lejos de las calles registradas; no se pudo calcular una ruta. ${SIGUE_A_PROTECCION_CIVIL}`,
 }
@@ -42,6 +41,16 @@ function textoRuta(resultado, sinDatosSismos) {
   return `${destino}: ${textoDistancia(distanciaM)} · unos ${minutos} min a pie · ${riesgo}`
 }
 
+// Una sola línea con la fuente y la hora de cada dato (para que el mapa no quede chico):
+// "Fuentes: calles de © OpenStreetMap del … · tu ubicación del …[ · estado del refugio (lista oficial) del …]"
+function textoFuentes(resultado, zona, ubicadoEn) {
+  let texto = `Fuentes: calles de © OpenStreetMap del ${formatearFechaHora(zona?.descargadoEn)} · tu ubicación del ${formatearFechaHora(ubicadoEn)}`
+  if (resultado.puntoReunion.tipo === 'refugio') {
+    texto += ` · estado del refugio (lista oficial) del ${formatearFechaHora(resultado.puntoReunion.actualizadoEn)}`
+  }
+  return texto
+}
+
 function textoBloqueosSinConfirmar(cantidad) {
   return cantidad === 1
     ? 'Hay 1 bloqueo sin confirmar cerca que podría estar cerrando el paso.'
@@ -59,6 +68,7 @@ function PanelEvacuacion({
   ubicadoEn,
   precisionM,
   sinDatosSismos,
+  sinDatosBloqueos,
   bloqueosSinConfirmarCerca,
   buscarRuta,
   limpiar,
@@ -71,10 +81,13 @@ function PanelEvacuacion({
   } else if (estado === 'ubicacion-imprecisa') {
     mensaje = {
       tipo: 'aviso',
-      texto: `Tu ubicación es aproximada (margen de ${Math.round(precisionM ?? 0)} m). Activa la ubicación precisa del teléfono o sal a un lugar abierto y vuelve a intentar.`,
+      texto: `Tu ubicación es aproximada (margen de ${Math.round(precisionM ?? 0)} m). Activa la ubicación precisa del teléfono o sal a un lugar abierto y vuelve a intentar. ${SIGUE_A_PROTECCION_CIVIL}`,
     }
   } else if (estado === 'error') {
-    mensaje = { tipo: 'error', texto: `No se pudo calcular la ruta: ${error}` }
+    // Cualquier error (sin https, sin ubicación, OpenStreetMap caído, bloqueo con formato raro)
+    // también termina recordando qué hacer
+    const sinPunto = String(error ?? '').replace(/[.\s]+$/, '')
+    mensaje = { tipo: 'error', texto: `No se pudo calcular la ruta: ${sinPunto}. ${SIGUE_A_PROTECCION_CIVIL}` }
   } else if (TEXTOS_SIN_RUTA[estado]) {
     mensaje = { tipo: 'error', texto: TEXTOS_SIN_RUTA[estado] }
   } else if (estado === 'sin-ruta') {
@@ -107,10 +120,8 @@ function PanelEvacuacion({
         <div className="mensaje-estado mensaje-info" role="status">
           <p>{textoRuta(resultado, sinDatosSismos)}</p>
           {sinDatosSismos && <p>No hay datos de sismos: el riesgo sísmico de la ruta es desconocido.</p>}
-          <p className="fuente">
-            Calles y puntos de reunión © OpenStreetMap · descargado {formatearFechaHora(zona?.descargadoEn)}
-          </p>
-          <p className="fuente">Tu ubicación: {formatearFechaHora(ubicadoEn)}</p>
+          {sinDatosBloqueos && <p>No se pudieron cargar los bloqueos reportados: la ruta no los toma en cuenta.</p>}
+          <p className="fuente">{textoFuentes(resultado, zona, ubicadoEn)}</p>
           <p className="fuente">
             Ruta calculada en tu teléfono; puede no reflejar daños recientes. Sigue las indicaciones oficiales.
           </p>

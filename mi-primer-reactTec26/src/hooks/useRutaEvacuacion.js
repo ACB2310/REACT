@@ -11,6 +11,10 @@ import { distanciaMetros } from '../utils/geo.js'
 // antenas) y una ruta calculada desde ahí podría empezar en otro lugar
 export const PRECISION_MAXIMA_M = 200
 
+// Los refugios a más de esta distancia del centro de la zona descargada no pueden quedar a
+// ≤ 300 m de sus calles (se descargan 1500 m alrededor): se descartan sin más cálculos
+const RADIO_REFUGIOS_EN_ZONA_M = 2000
+
 // Radio para avisar cuántos bloqueos sin confirmar hay cerca de la persona
 const RADIO_AVISO_BLOQUEOS_M = 2500
 
@@ -28,27 +32,33 @@ const INICIAL = { fase: 'inactivo', error: null, zona: null, origen: null, preci
 // - la posición real de cada punto de reunión y su tramo desde la última esquina.
 // Cualquiera de esos tramos dentro de un bloqueo total o del radio crítico de un sismo fuerte
 // se descarta, igual que una calle.
-function calcularConZona(zona, destinos, { nodoOrigen, hayCalleCerca }, origen, sismos, bloqueos) {
+function calcularConZona(zona, destinos, hayCalleCerca, origen, sismos, bloqueos) {
   try {
     if (destinos.length === 0) return { estado: 'sin-puntos' }
     if (!hayCalleCerca) return { estado: 'lejos-de-calles' }
-    // Hay calles cerca, pero ninguna conectada con un punto de reunión o refugio
-    if (nodoOrigen === null) return { estado: 'sin-ruta', motivo: 'origen-aislado' }
 
     const sismosActivos = filtrarSismosActivos(sismos, Date.now())
     const bloqueado = (a, b) => tramoBloqueadoAPie(a, b, sismosActivos, { bloqueos })
     const coordenadasNodo = (id) => zona.grafo.nodos[id].coordenadas
 
-    // ¿La persona misma está en una zona de peligro, o su camino a la primera calle lo cruza?
-    if (bloqueado(origen, origen) || bloqueado(origen, coordenadasNodo(nodoOrigen))) {
-      return { estado: 'sin-ruta', motivo: 'origen-en-zona-de-peligro' }
-    }
+    // ¿La persona misma está en una zona de peligro?
+    if (bloqueado(origen, origen)) return { estado: 'sin-ruta', motivo: 'origen-en-zona-de-peligro' }
 
     // Se revisa cada punto por su posición real, no solo por la esquina a la que se pegó
     const puntosSeguros = destinos.filter(
       (p) => !bloqueado(p.coordenadas, p.coordenadas) && !bloqueado(coordenadasNodo(p.nodoId), p.coordenadas),
     )
     if (puntosSeguros.length === 0) return { estado: 'sin-ruta', motivo: 'refugios-inalcanzables' }
+
+    // La esquina donde empieza la ruta: la más cercana a la persona que SÍ está conectada
+    // con algún destino SEGURO (no un andador suelto ni uno cuyo único destino es peligroso)
+    const nodoOrigen = nodoMasCercanoConectado(zona.grafo, origen, puntosSeguros.map((p) => p.nodoId))
+    // Hay calles cerca, pero ninguna conectada con un punto de reunión o refugio seguro
+    if (nodoOrigen === null) return { estado: 'sin-ruta', motivo: 'origen-aislado' }
+    // ¿El camino de la persona a esa primera calle cruza un peligro?
+    if (bloqueado(origen, coordenadasNodo(nodoOrigen))) {
+      return { estado: 'sin-ruta', motivo: 'origen-en-zona-de-peligro' }
+    }
 
     const ruta = calcularRutaEvacuacion(
       zona.grafo,
@@ -81,7 +91,13 @@ function calcularConZona(zona, destinos, { nodoOrigen, hayCalleCerca }, origen, 
         distanciaM,
         distanciaKm: Math.round(distanciaM / 100) / 10,
         ruta: lineaCompleta,
-        puntoReunion: { nombre: punto.nombre, coordenadas: punto.coordenadas, tipo: punto.tipo },
+        puntoReunion: {
+          nombre: punto.nombre,
+          coordenadas: punto.coordenadas,
+          tipo: punto.tipo,
+          // Para los refugios: hora del estado (abierto) según la lista oficial
+          ...(punto.actualizadoEn != null && { actualizadoEn: punto.actualizadoEn }),
+        },
       },
     }
   } catch (e) {
@@ -149,10 +165,11 @@ export function useRutaEvacuacion({ sismos, bloqueos = SIN_BLOQUEOS, refugios = 
         })
         if (!sigueVigente()) return
         zona = { centro: coordenadas, descargadoEn, ...construirZonaEvacuacion(elementos) }
-        // Solo se guarda una zona útil: si vino vacía (sin calles o sin puntos de reunión)
-        // se vuelve a intentar la próxima vez en lugar de quedarse así 7 días.
+        // Solo se guarda una zona con calles: si vino vacía se vuelve a intentar la próxima
+        // vez en lugar de quedarse así 7 días. Una zona con calles sirve aunque no tenga
+        // puntos de reunión de OSM, porque también se usan los refugios oficiales.
         // Si no se puede guardar (almacenamiento lleno o bloqueado), la ruta se calcula igual.
-        if (zona.puntosReunion.length > 0 && zona.grafo.aristas.length > 0) guardarZona(zona)
+        if (zona.grafo.aristas.length > 0) guardarZona(zona)
       }
 
       // 4. Con la zona lista, la ruta se calcula abajo (useMemo)
@@ -180,6 +197,9 @@ export function useRutaEvacuacion({ sismos, bloqueos = SIN_BLOQUEOS, refugios = 
       if (refugio?.properties?.estado !== 'abierto') continue
       const [longitud, latitud] = refugio.geometry?.coordinates ?? []
       if (!Number.isFinite(longitud) || !Number.isFinite(latitud)) continue
+      // La lista trae refugios de todo el país: los que quedan fuera de la zona descargada
+      // se descartan con una sola medida, antes de buscar su calle (eso es lo lento)
+      if (distanciaMetros(busqueda.zona.centro, [longitud, latitud]) > RADIO_REFUGIOS_EN_ZONA_M) continue
       const nodoId = nodoMasCercano(busqueda.zona.grafo, [longitud, latitud])
       if (nodoId === null) continue
       refugiosAbiertos.push({
@@ -188,32 +208,27 @@ export function useRutaEvacuacion({ sismos, bloqueos = SIN_BLOQUEOS, refugios = 
         coordenadas: [longitud, latitud],
         nodoId,
         tipo: 'refugio',
+        actualizadoEn: refugio.properties.actualizadoEn ?? null,
       })
     }
     return [...puntos, ...refugiosAbiertos]
   }, [busqueda, refugios])
 
-  // La esquina de calle donde empieza la ruta: la más cercana a la persona que SÍ está
-  // conectada con algún destino (no un andador suelto). Solo cambia con otra búsqueda
-  // o si cambian los destinos.
-  const nodoOrigen = useMemo(() => {
-    if (busqueda.fase !== 'zona-lista') return null
+  // ¿Hay alguna calle a ≤ 300 m de la persona? Solo cambia con otra búsqueda
+  const hayCalleCerca = useMemo(() => {
+    if (busqueda.fase !== 'zona-lista') return false
     try {
-      const { grafo } = busqueda.zona
-      return {
-        hayCalleCerca: nodoMasCercano(grafo, busqueda.origen) !== null,
-        nodoOrigen: nodoMasCercanoConectado(grafo, busqueda.origen, destinos.map((d) => d.nodoId)),
-      }
+      return nodoMasCercano(busqueda.zona.grafo, busqueda.origen) !== null
     } catch {
-      return { hayCalleCerca: false, nodoOrigen: null }
+      return false
     }
-  }, [busqueda, destinos])
+  }, [busqueda])
 
   // La ruta depende de la zona, del origen, de los destinos y de los sismos y bloqueos ACTUALES
   const calculo = useMemo(() => {
     if (busqueda.fase !== 'zona-lista') return null
-    return calcularConZona(busqueda.zona, destinos, nodoOrigen, busqueda.origen, sismos, bloqueos)
-  }, [busqueda, destinos, nodoOrigen, sismos, bloqueos])
+    return calcularConZona(busqueda.zona, destinos, hayCalleCerca, busqueda.origen, sismos, bloqueos)
+  }, [busqueda, destinos, hayCalleCerca, sismos, bloqueos])
 
   // Los bloqueos 'total' sin confirmar SÍ bloquean la ruta (ante la duda, no se pasa).
   // Si por eso no hay ruta, la pantalla puede decir cuántos hay cerca sin confirmar.

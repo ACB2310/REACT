@@ -30,6 +30,7 @@ function mostrar(props = {}) {
       ubicadoEn={null}
       precisionM={null}
       sinDatosSismos={false}
+      sinDatosBloqueos={false}
       bloqueosSinConfirmarCerca={0}
       buscarRuta={buscarRuta}
       limpiar={limpiar}
@@ -57,7 +58,7 @@ describe('PanelEvacuacion', () => {
     ['calculando', 'Calculando la ruta más segura…'],
     ['sin-puntos', 'No hay puntos de reunión ni refugios abiertos registrados cerca de ti. Sigue las indicaciones de Protección Civil.'],
     ['lejos-de-calles', 'Estás lejos de las calles registradas; no se pudo calcular una ruta. Sigue las indicaciones de Protección Civil.'],
-    ['sin-zona-offline', 'Sin conexión y sin calles guardadas de esta zona. Cuando tengas señal, toca "Ruta a punto de reunión" para guardarlas.'],
+    ['sin-zona-offline', 'Sin conexión y sin calles guardadas de esta zona. Cuando tengas señal, toca "Ruta a punto de reunión" para guardarlas. Sigue las indicaciones de Protección Civil.'],
   ])('estado %s', (estado, texto) => {
     mostrar({ estado })
     expect(screen.getByText(texto)).toBeInTheDocument()
@@ -65,14 +66,14 @@ describe('PanelEvacuacion', () => {
 
   it('error muestra el mensaje real', () => {
     mostrar({ estado: 'error', error: 'OpenStreetMap respondió 429' })
-    expect(screen.getByRole('alert')).toHaveTextContent('No se pudo calcular la ruta: OpenStreetMap respondió 429')
+    expect(screen.getByRole('alert')).toHaveTextContent('No se pudo calcular la ruta: OpenStreetMap respondió 429. Sigue las indicaciones de Protección Civil.')
   })
 
   it('ubicación imprecisa dice el margen y cómo mejorarlo', () => {
     mostrar({ estado: 'ubicacion-imprecisa', precisionM: 1530.4 })
     expect(
       screen.getByText(
-        'Tu ubicación es aproximada (margen de 1530 m). Activa la ubicación precisa del teléfono o sal a un lugar abierto y vuelve a intentar.',
+        'Tu ubicación es aproximada (margen de 1530 m). Activa la ubicación precisa del teléfono o sal a un lugar abierto y vuelve a intentar. Sigue las indicaciones de Protección Civil.',
       ),
     ).toBeInTheDocument()
   })
@@ -138,12 +139,41 @@ describe('PanelEvacuacion', () => {
       expect(screen.getByText('No hay datos de sismos: el riesgo sísmico de la ruta es desconocido.')).toBeInTheDocument()
     })
 
-    it('dice la fuente y cuándo se descargaron las calles y se tomó la ubicación', () => {
+    // Una sola línea corta, para que el mapa no quede chico en el celular
+    it('dice en una línea la fuente y cuándo se descargaron las calles y se tomó la ubicación', () => {
       conRuta()
-      expect(screen.getByText(/^Calles y puntos de reunión © OpenStreetMap · descargado /)).toHaveTextContent(
-        /16 oct\.? 2026, 16:00/,
+      expect(screen.getByText(/^Fuentes: calles de © OpenStreetMap del /)).toHaveTextContent(
+        /calles de © OpenStreetMap del 16 oct\.? 2026, 16:00 · tu ubicación del 16 oct\.? 2026, 16:05$/,
       )
-      expect(screen.getByText(/^Tu ubicación: /)).toHaveTextContent(/16 oct\.? 2026, 16:05/)
+    })
+
+    it('si el destino es un refugio dice de cuándo es su estado (lista oficial)', () => {
+      conRuta({
+        resultado: resultado({
+          puntoReunion: {
+            nombre: 'Escuela Juárez',
+            coordenadas: [0, 0],
+            tipo: 'refugio',
+            actualizadoEn: Date.UTC(2026, 9, 16, 21, 30),
+          },
+        }),
+      })
+      expect(screen.getByText(/^Fuentes: /)).toHaveTextContent(
+        /· estado del refugio \(lista oficial\) del 16 oct\.? 2026, 15:30$/,
+      )
+    })
+
+    // Sin señal desde que se abrió la app, los bloqueos reportados no llegaron
+    it('sin datos de bloqueos avisa que la ruta no los toma en cuenta', () => {
+      conRuta({ sinDatosBloqueos: true })
+      expect(
+        screen.getByText('No se pudieron cargar los bloqueos reportados: la ruta no los toma en cuenta.'),
+      ).toBeInTheDocument()
+    })
+
+    it('con datos de bloqueos no muestra ese aviso', () => {
+      conRuta()
+      expect(screen.queryByText(/no los toma en cuenta/)).not.toBeInTheDocument()
     })
 
     it('recuerda que la ruta es informativa', () => {

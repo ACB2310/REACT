@@ -537,6 +537,62 @@ describe('useRutaEvacuacion', () => {
     expect(result.current.resultado.nodos[0]).toBe('1')
   })
 
+  // Revisión de la tarea 10: el inicio de la ruta se elegía con TODOS los destinos, incluso
+  // los que luego se descartan por peligrosos: salía "no hay ruta" aunque sí había una
+  it('elige el inicio solo con destinos seguros', async () => {
+    const CERCA_DE_LA_ISLA = [-100.3096, 25.6704]
+    // Andador suelto junto a la persona, con un punto de reunión propio que está bloqueado
+    const isla = {
+      type: 'way',
+      id: 810,
+      nodes: [80, 81],
+      geometry: [{ lat: 25.67045, lon: -100.30955 }, { lat: 25.6706, lon: -100.3094 }],
+      tags: { highway: 'footway' },
+    }
+    const puntoEnLaIsla = { type: 'node', id: 960, lat: 25.67065, lon: -100.30935, tags: { emergency: 'assembly_point', name: 'Patio bloqueado' } }
+    const bloqueoDelPatio = {
+      type: 'Feature',
+      geometry: { type: 'Polygon', coordinates: [[[-100.30938, 25.67062], [-100.30932, 25.67062], [-100.30932, 25.67068], [-100.30938, 25.67068], [-100.30938, 25.67062]]] },
+      properties: { tipo: 'total' },
+    }
+    obtenerUbicacionActual.mockResolvedValue({ coordenadas: CERCA_DE_LA_ISLA, precisionM: 10 })
+    obtenerCallesYPuntosReunion.mockResolvedValue({
+      elementos: [...elementosOverpassEjemplo, isla, puntoEnLaIsla],
+      descargadoEn: Date.now(),
+    })
+    const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA, bloqueos: [bloqueoDelPatio] }))
+    await buscar(result)
+
+    expect(result.current.estado).toBe('listo')
+    expect(result.current.resultado.puntoReunion.nombre).toBe('Plaza Hidalgo')
+  })
+
+  it('un refugio como destino trae la hora de su estado', async () => {
+    const refugios = {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          id: 1,
+          geometry: { type: 'Point', coordinates: [-100.3051, 25.6701] },
+          properties: { id: 1, nombre: 'Escuela Juárez', estado: 'abierto', actualizadoEn: Date.UTC(2026, 9, 16, 20) },
+        },
+      ],
+    }
+    const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA, refugios }))
+    await buscar(result)
+    expect(result.current.resultado.puntoReunion.actualizadoEn).toBe(Date.UTC(2026, 9, 16, 20))
+  })
+
+  // Una zona que solo tiene calles (y quizá refugios) también sirve sin conexión
+  it('guarda una zona con calles aunque no tenga puntos de reunión de OSM', async () => {
+    const soloCalles = elementosOverpassEjemplo.filter((e) => e.type === 'way')
+    obtenerCallesYPuntosReunion.mockResolvedValue({ elementos: soloCalles, descargadoEn: Date.now() })
+    const { result } = renderHook(() => useRutaEvacuacion({ sismos: VACIA }))
+    await buscar(result)
+    expect(localStorage.getItem(CLAVE_ZONA)).not.toBeNull()
+  })
+
   it('al desmontar cancela la descarga en curso', async () => {
     let senal
     obtenerCallesYPuntosReunion.mockImplementation((coordenadas, opciones) => {

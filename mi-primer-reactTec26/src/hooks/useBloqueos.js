@@ -52,13 +52,24 @@ export function useBloqueos() {
     return () => clearInterval(intervalo)
   }, [])
 
+  // Ids de los bloqueos vigentes, como texto. Si en la revisión de cada minuto no venció
+  // ninguno, la clave no cambia y la lista es la MISMA: así la ruta de evacuación
+  // (que se recalcula cuando cambia la lista) no repite el cálculo sin necesidad.
+  const claveVigentes = datos
+    ? datos.features
+        .filter((bloqueo) => (bloqueo.properties.expiraEn ?? 0) > ahora)
+        .map((bloqueo) => bloqueo.properties.id ?? bloqueo.id)
+        .join(',')
+    : null
+
   const bloqueos = useMemo(() => {
     if (!datos) return null
+    const vigentes = new Set(claveVigentes ? claveVigentes.split(',') : [])
     return {
       ...datos,
-      features: datos.features.filter((bloqueo) => (bloqueo.properties.expiraEn ?? 0) > ahora),
+      features: datos.features.filter((bloqueo) => vigentes.has(String(bloqueo.properties.id ?? bloqueo.id))),
     }
-  }, [datos, ahora])
+  }, [datos, claveVigentes])
 
   // Sin Supabase no se pide nada: se avisa una vez en lugar de reintentar
   const estadoCarga = supabaseConfigurado ? resto : { ...resto, estado: 'error', error: MENSAJE_SIN_CONFIGURAR }

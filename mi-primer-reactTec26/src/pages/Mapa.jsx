@@ -145,7 +145,7 @@ function Mapa() {
     <div className="pantalla-mapa">
       <header className="barra-superior">
         <h1>Mapa en vivo</h1>
-        <PanelEvacuacion {...evacuacion} />
+        <PanelEvacuacion {...evacuacion} sinDatosBloqueos={bloqueos.bloqueos == null} />
         {totalSismos > 0 && (
           <p className="conteo">
             {totalSismos === 1 ? '1 sismo' : `${totalSismos} sismos`} en los últimos 7 días

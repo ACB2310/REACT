@@ -573,6 +573,15 @@ describe('Página Mapa', () => {
       expect(ordenRender.lastIndexOf('ruta')).toBeGreaterThan(ordenRender.lastIndexOf('bloqueos'))
     })
 
+    it('si los bloqueos no se pudieron cargar, el panel avisa que la ruta no los toma en cuenta', () => {
+      simularSupabaseListo({ useRefugios, useBloqueos, useSesion }, { bloqueos: { bloqueos: null, estado: 'error' } })
+      conRuta()
+      render(<Mapa />, { wrapper: MemoryRouter })
+      expect(
+        screen.getByText('No se pudieron cargar los bloqueos reportados: la ruta no los toma en cuenta.'),
+      ).toBeInTheDocument()
+    })
+
     it('el panel muestra el resumen de la ruta', () => {
       conRuta()
       render(<Mapa />, { wrapper: MemoryRouter })

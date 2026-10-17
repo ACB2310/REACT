@@ -99,6 +99,19 @@ describe('useBloqueos', () => {
     expect(obtenerBloqueos).toHaveBeenCalledTimes(3)
   })
 
+  // La ruta de evacuación se recalcula cuando cambia la lista: si en la revisión de cada
+  // minuto no venció ninguno, la lista debe ser la MISMA (no una copia igual)
+  it('si no vence ninguno, la revisión de cada minuto devuelve la misma lista', async () => {
+    const { result } = renderHook(() => useBloqueos())
+    await esperarPromesas()
+    const antes = result.current.bloqueos
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60000)
+    })
+    expect(result.current.bloqueos).toBe(antes)
+  })
+
   it('un bloqueo que vence desaparece sin recargar', async () => {
     const { result } = renderHook(() => useBloqueos())
     await esperarPromesas()
