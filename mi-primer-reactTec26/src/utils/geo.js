@@ -21,3 +21,39 @@ export function distanciaMetros(a, b) {
 export function distanciaPuntoSegmentoKm(punto, a, b) {
   return pointToLineDistance(point(punto), lineString([a, b]), { units: 'kilometers' })
 }
+
+// Caja [oeste, sur, este, norte] que encierra cualquier geometría GeoJSON
+// (Point, LineString, Polygon, Multi*). Sirve para descartar rápido lo que está lejos.
+export function cajaDeGeometria(geometria) {
+  const caja = [Infinity, Infinity, -Infinity, -Infinity]
+  const recorrer = (coordenadas) => {
+    if (typeof coordenadas?.[0] === 'number') {
+      const [longitud, latitud] = coordenadas
+      caja[0] = Math.min(caja[0], longitud)
+      caja[1] = Math.min(caja[1], latitud)
+      caja[2] = Math.max(caja[2], longitud)
+      caja[3] = Math.max(caja[3], latitud)
+    } else {
+      for (const parte of coordenadas ?? []) recorrer(parte)
+    }
+  }
+  if (geometria?.type === 'GeometryCollection') geometria.geometries?.forEach((g) => recorrer(g?.coordinates))
+  else recorrer(geometria?.coordinates)
+  return caja
+}
+
+// Agranda una caja `km` kilómetros hacia cada lado, con 10 % de margen para no
+// descartar nunca algo que sí está cerca. Cerca de los polos devuelve el mundo entero.
+export function agrandarCaja([oeste, sur, este, norte], km) {
+  const latitudMaxima = Math.max(Math.abs(sur), Math.abs(norte))
+  const coseno = Math.cos((latitudMaxima * Math.PI) / 180)
+  if (!Number.isFinite(km) || !(coseno > 0.01)) return [-180, -90, 180, 90]
+  const gradosLatitud = (km / 110.574) * 1.1
+  const gradosLongitud = (km / (111.32 * coseno)) * 1.1
+  return [oeste - gradosLongitud, sur - gradosLatitud, este + gradosLongitud, norte + gradosLatitud]
+}
+
+// ¿Se tocan dos cajas?
+export function cajasSeTocan(a, b) {
+  return a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3]
+}

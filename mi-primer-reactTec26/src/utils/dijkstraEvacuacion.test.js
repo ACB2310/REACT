@@ -1,3 +1,5 @@
+// @vitest-environment node
+// Funciones puras sin DOM: el entorno node mide el tiempo como en el navegador real (jsdom lo hace ~8 veces más lento)
 import { describe, it, expect } from 'vitest'
 import { calcularRutaEvacuacion } from './dijkstraEvacuacion.js'
 import { sismosEjemplo } from '../mocks/sismosEjemplo.js'
@@ -129,6 +131,94 @@ describe('calcularRutaEvacuacion', () => {
       [-100.3, 25.67],
       [-100.3, 25.67],
     ])
+  })
+
+  // CLAUDE.md: se descartan los refugios dentro de una zona de peligro, aunque ya estés ahí
+  it('descarta un refugio dentro del radio crítico aunque sea el origen', () => {
+    const resultado = calcularRutaEvacuacion(grafoDosRefugios, 'c2', ['c2', 'c3'], sismosEjemplo)
+    expect(resultado.refugioId).not.toBe('c2')
+    expect(resultado.estado).toBe('sin-ruta')
+  })
+
+  it('descarta un refugio dentro de un bloqueo total', () => {
+    const cuadroSobreM4 = {
+      type: 'Feature',
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[-100.3005, 25.6695], [-100.2995, 25.6695], [-100.2995, 25.6705], [-100.3005, 25.6705], [-100.3005, 25.6695]]],
+      },
+      properties: { tipo: 'total' },
+    }
+    const resultado = calcularRutaEvacuacion(grafoMonterrey, 'm1', ['m4', 'm5'], SIN_SISMOS, { bloqueos: [cuadroSobreM4] })
+    expect(resultado.refugioId).toBe('m5')
+  })
+
+  // Los bloqueos se reportan tocando el mapa: pueden llegar como un punto
+  it('un bloqueo total marcado como punto cierra la calle de al lado', () => {
+    // A ~10 m al norte de la mitad de m1-m2
+    const punto = { type: 'Feature', geometry: { type: 'Point', coordinates: [-100.3075, 25.67009] }, properties: { tipo: 'total' } }
+    const resultado = calcularRutaEvacuacion(grafoMonterrey, 'm1', ['m4', 'm5'], SIN_SISMOS, { bloqueos: [punto] })
+    expect(resultado.nodos).toEqual(['m1', 'm3', 'm5'])
+  })
+
+  it('un bloqueo punto lejano no cierra la calle', () => {
+    // A ~110 m de m1-m2
+    const punto = { type: 'Feature', geometry: { type: 'Point', coordinates: [-100.3075, 25.671] }, properties: { tipo: 'total' } }
+    const resultado = calcularRutaEvacuacion(grafoMonterrey, 'm1', ['m4', 'm5'], SIN_SISMOS, { bloqueos: [punto] })
+    expect(resultado.nodos).toEqual(['m1', 'm2', 'm4'])
+  })
+
+  it('bloqueos null o con elementos vacíos no rompen el cálculo', () => {
+    const sinGeometria = { type: 'Feature', geometry: null, properties: { tipo: 'total' } }
+    expect(calcularRutaEvacuacion(grafoMonterrey, 'm1', ['m4'], SIN_SISMOS, { bloqueos: null }).estado).toBe('ok')
+    expect(
+      calcularRutaEvacuacion(grafoMonterrey, 'm1', ['m4'], SIN_SISMOS, { bloqueos: [null, sinGeometria] }).estado,
+    ).toBe('ok')
+  })
+
+  it('acepta los sismos como lista de Features además de FeatureCollection', () => {
+    const resultado = calcularRutaEvacuacion(grafoAcapulco, 'a1', ['a4'], sismosEjemplo.features)
+    expect(resultado.nodos).toEqual(['a1', 'a3', 'a4'])
+  })
+
+  // La red real de una zona tiene miles de calles; en el teléfono no puede tardar segundos
+  it('calcula rápido en una red grande con sismos y bloqueos', () => {
+    const lado = 90 // 90 x 90 nodos ≈ 16 000 calles
+    const nodos = {}
+    const aristas = []
+    const paso = 0.001
+    for (let i = 0; i < lado; i++) {
+      for (let j = 0; j < lado; j++) {
+        const id = `${i}-${j}`
+        nodos[id] = { id, coordenadas: [-99.2 + i * paso, 19.4 + j * paso] }
+        if (i > 0) aristas.push({ id: `h${id}`, desde: `${i - 1}-${j}`, hasta: id, vulnerabilidad: 0.1 })
+        if (j > 0) aristas.push({ id: `v${id}`, desde: `${i}-${j - 1}`, hasta: id, vulnerabilidad: 0.1 })
+      }
+    }
+    const sismos = {
+      type: 'FeatureCollection',
+      features: Array.from({ length: 20 }, (_, k) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [-99.17 + (k % 5) * 0.01, 19.43 + Math.floor(k / 5) * 0.01] },
+        properties: { mag: 2.5 + (k % 3) * 0.3 },
+      })),
+    }
+    const bloqueos = Array.from({ length: 50 }, (_, k) => {
+      const x = -99.19 + (k % 10) * 0.007
+      const y = 19.41 + Math.floor(k / 10) * 0.012
+      return {
+        type: 'Feature',
+        geometry: { type: 'Polygon', coordinates: [[[x, y], [x + 0.0004, y], [x + 0.0004, y + 0.0004], [x, y + 0.0004], [x, y]]] },
+        properties: { tipo: 'total' },
+      }
+    })
+
+    const inicio = performance.now()
+    const resultado = calcularRutaEvacuacion({ nodos, aristas }, '0-0', [`${lado - 1}-${lado - 1}`], sismos, { bloqueos })
+    const duracion = performance.now() - inicio
+
+    expect(resultado.estado).toBe('ok')
+    expect(duracion).toBeLessThan(2000)
   })
 
   it('origen desconocido', () => {

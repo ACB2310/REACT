@@ -54,6 +54,7 @@ export const grafoDosRefugios = crearGrafo(
 export const grafoPuente = crearGrafo(
   [nodo('p1', [-100.31, 25.7]), nodo('p2', [-100.3, 25.7]), nodo('p3', [-100.305, 25.7015])],
   [
+    // Puente (bridge=yes): vulnerabilidad residencial 0.1 + 0.5
     arista('p1', 'p2', { tipoVia: 'residential', vulnerabilidad: 0.6 }),
     arista('p1', 'p3'),
     arista('p3', 'p2'),

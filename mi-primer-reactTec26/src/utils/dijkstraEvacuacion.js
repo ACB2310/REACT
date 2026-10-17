@@ -1,8 +1,8 @@
 import booleanIntersects from '@turf/boolean-intersects'
-import { lineString } from '@turf/helpers'
+import { lineString, point } from '@turf/helpers'
 import { crearColaPrioridad } from './colaPrioridad.js'
-import { distanciaMetros } from './geo.js'
-import { factorRiesgoSismico } from './riesgoSismico.js'
+import { agrandarCaja, cajaDeGeometria, cajasSeTocan, distanciaMetros, distanciaPuntoSegmentoKm } from './geo.js'
+import { factorRiesgoConSismosPreparados, prepararSismos } from './riesgoSismico.js'
 
 // Vulnerabilidad que se usa si una calle no trae un valor válido.
 // Es la misma que "cualquier otra vía" del plan: ante la duda, no se asume que es segura.
@@ -18,19 +18,57 @@ function nivelDeRiesgo(riesgo) {
   return 'alto'
 }
 
+// Un bloqueo reportado como punto (tocando el mapa) cierra las calles a esta distancia o menos
+const RADIO_BLOQUEO_PUNTO_M = 20
+
+// Prepara los bloqueos que impiden pasar A PIE, una sola vez por cálculo:
+// - Caminando, solo los "total" impiden el paso; los "solo_vehiculos" se pueden cruzar.
+// - Un bloqueo sin tipo conocido se trata como "total": ante la duda, no se pasa.
+// - Se acepta un Feature o una geometría suelta; los vacíos se ignoran.
+// - Se guarda la caja de cada bloqueo para descartar rápido las calles lejanas.
+function prepararBloqueosAPie(bloqueos) {
+  const preparados = []
+  for (const bloqueo of bloqueos ?? []) {
+    const geometria = bloqueo?.type === 'Feature' ? bloqueo.geometry : bloqueo
+    if (!geometria?.type) continue
+    if (bloqueo?.properties?.tipo === 'solo_vehiculos') continue
+    const esPunto = geometria.type === 'Point' || geometria.type === 'MultiPoint'
+    const caja = cajaDeGeometria(geometria)
+    preparados.push({
+      geometria,
+      esPunto,
+      // A los puntos se les da un radio para que sí cierren la calle de al lado
+      caja: esPunto ? agrandarCaja(caja, RADIO_BLOQUEO_PUNTO_M / 1000) : caja,
+    })
+  }
+  return preparados
+}
+
+// Puntos de un bloqueo de tipo Point o MultiPoint
+function puntosDeBloqueo(geometria) {
+  return geometria.type === 'Point' ? [geometria.coordinates] : geometria.coordinates
+}
+
 // ¿El tramo [a, b] toca algún bloqueo que impida pasar a pie?
-// Caminando, solo los bloqueos "total" impiden el paso; los "solo_vehiculos" se pueden cruzar.
-// Un bloqueo sin tipo conocido se trata como "total": ante la duda, no se pasa.
-function cruzaBloqueoAPie(a, b, bloqueos) {
-  const tramo = lineString([a, b])
-  return bloqueos.some(
-    (bloqueo) => bloqueo?.properties?.tipo !== 'solo_vehiculos' && booleanIntersects(tramo, bloqueo),
-  )
+// Con a == b sirve para saber si un punto (un refugio) queda dentro de un bloqueo.
+function tocaBloqueoAPie(a, b, bloqueos) {
+  if (bloqueos.length === 0) return false
+  const cajaTramo = cajaDeGeometria({ type: 'LineString', coordinates: [a, b] })
+  const tramo = a[0] === b[0] && a[1] === b[1] ? point(a) : lineString([a, b])
+  return bloqueos.some(({ geometria, esPunto, caja }) => {
+    if (!cajasSeTocan(cajaTramo, caja)) return false
+    if (esPunto) {
+      return puntosDeBloqueo(geometria).some(
+        (p) => distanciaPuntoSegmentoKm(p, a, b) * 1000 <= RADIO_BLOQUEO_PUNTO_M,
+      )
+    }
+    return booleanIntersects(tramo, geometria)
+  })
 }
 
 // Arma la lista de vecinos de cada nodo con el costo de ir hacia ellos.
 // Las calles se pueden recorrer en los dos sentidos (a pie no importan los sentidos únicos).
-function construirVecinos(grafo, sismosActivos, bloqueos) {
+function construirVecinos(grafo, sismos, bloqueos) {
   const vecinos = new Map()
   const conCalles = new Set()
   const agregar = (desde, entrada) => {
@@ -45,9 +83,9 @@ function construirVecinos(grafo, sismosActivos, bloqueos) {
     conCalles.add(arista.desde)
     conCalles.add(arista.hasta)
 
-    const riesgoSismico = factorRiesgoSismico([a, b], sismosActivos)
+    const riesgoSismico = factorRiesgoConSismosPreparados([a, b], sismos)
     // Tramo bloqueado por un sismo fuerte o por un bloqueo total: no se usa
-    if (riesgoSismico === Infinity || cruzaBloqueoAPie(a, b, bloqueos)) continue
+    if (riesgoSismico === Infinity || tocaBloqueoAPie(a, b, bloqueos)) continue
 
     const vulnerabilidad =
       Number.isFinite(arista.vulnerabilidad) && arista.vulnerabilidad >= 0
@@ -69,18 +107,30 @@ function construirVecinos(grafo, sismosActivos, bloqueos) {
 //
 // - grafo: { nodos: { [id]: { id, coordenadas: [lon, lat] } }, aristas: [{ id, desde, hasta, vulnerabilidad, tipoVia }] }
 // - idsRefugios: ids de los nodos que son puntos de reunión o refugios
-// - sismosActivos: FeatureCollection de sismos (ver filtrarSismosActivos)
-// - bloqueos: Features con properties.tipo 'total' o 'solo_vehiculos'
+// - sismosActivos: FeatureCollection (o lista) de sismos (ver filtrarSismosActivos)
+// - bloqueos: Features con properties.tipo 'total' o 'solo_vehiculos' (polígono, línea o punto)
 //
 // Devuelve { estado: 'ok', refugioId, nodos, distanciaM, distanciaKm, costo, riesgoMaximo, nivelRiesgo, ruta }
 // o { estado: 'sin-ruta', motivo } para que la pantalla avise a la persona.
 export function calcularRutaEvacuacion(grafo, nodoOrigenId, idsRefugios, sismosActivos, { bloqueos = [] } = {}) {
   if (!grafo?.nodos?.[nodoOrigenId]) return { estado: 'sin-ruta', motivo: 'origen-desconocido' }
 
-  const refugios = [...new Set(idsRefugios ?? [])].filter((id) => grafo.nodos[id])
-  if (refugios.length === 0) return { estado: 'sin-ruta', motivo: 'sin-refugios' }
+  const candidatos = [...new Set(idsRefugios ?? [])].filter((id) => grafo.nodos[id])
+  if (candidatos.length === 0) return { estado: 'sin-ruta', motivo: 'sin-refugios' }
 
-  const { vecinos, conCalles } = construirVecinos(grafo, sismosActivos, bloqueos)
+  // Sismos y bloqueos se preparan una sola vez para todo el cálculo
+  const sismos = prepararSismos(sismosActivos)
+  const bloqueosAPie = prepararBloqueosAPie(bloqueos)
+
+  // CLAUDE.md: se descartan los refugios dentro de una zona de peligro
+  // (radio crítico de un sismo fuerte o dentro de un bloqueo total), aunque ya estés ahí
+  const refugios = candidatos.filter((id) => {
+    const p = grafo.nodos[id].coordenadas
+    return factorRiesgoConSismosPreparados([p, p], sismos) !== Infinity && !tocaBloqueoAPie(p, p, bloqueosAPie)
+  })
+  if (refugios.length === 0) return { estado: 'sin-ruta', motivo: 'refugios-inalcanzables' }
+
+  const { vecinos, conCalles } = construirVecinos(grafo, sismos, bloqueosAPie)
   const yaEstaEnRefugio = refugios.includes(nodoOrigenId)
   if (!yaEstaEnRefugio && !conCalles.has(nodoOrigenId)) return { estado: 'sin-ruta', motivo: 'origen-aislado' }
 

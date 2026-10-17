@@ -1,4 +1,4 @@
-import { distanciaPuntoSegmentoKm } from './geo.js'
+import { agrandarCaja, cajaDeGeometria, cajasSeTocan, distanciaPuntoSegmentoKm } from './geo.js'
 
 // A partir de esta magnitud, un tramo dentro del radio crítico queda BLOQUEADO
 export const MAGNITUD_FUERTE = 6.0
@@ -19,17 +19,16 @@ export function radioCriticoKm(mag) {
   return radioInfluenciaKm(mag) / 4
 }
 
-// Cuánto riesgo agregan los sismos a un tramo de calle [a, b] (cada punto en [lon, lat]).
-// - 0: ningún sismo cerca.
-// - Un número positivo: se suma el aporte de cada sismo cercano; más grande
-//   cuanto más fuerte y más cerca está el sismo.
-// - Infinity: el tramo pasa por el radio crítico de un sismo fuerte (bloqueado).
-export function factorRiesgoSismico([a, b], sismos) {
-  let factor = 0
-  for (const sismo of sismos?.features ?? []) {
+// Revisa y prepara los sismos UNA sola vez, para no repetir el trabajo en cada una
+// de las miles de calles. Acepta un FeatureCollection o una lista simple de Features.
+// Devuelve [{ mag, epicentro, radioInfluencia, radioCritico, caja }] solo con sismos válidos.
+export function prepararSismos(sismos) {
+  const lista = Array.isArray(sismos) ? sismos : (sismos?.features ?? [])
+  const preparados = []
+  for (const sismo of lista) {
     // Se acepta la magnitud como número o como texto ("6.3"): un sismo fuerte
     // no debe contar como "sin sismo" solo por cómo vino escrito
-    const valorMag = sismo.properties?.mag
+    const valorMag = sismo?.properties?.mag
     const mag = typeof valorMag === 'string' && valorMag.trim() !== '' ? Number(valorMag) : valorMag
     // Sin magnitud no se puede estimar el riesgo: ese sismo no aporta.
     // Las magnitudes de 0 o menos (micro-sismos) tampoco: nunca deben BAJAR el riesgo.
@@ -40,15 +39,44 @@ export function factorRiesgoSismico([a, b], sismos) {
     // Si no se sabe dónde fue, no se puede medir: se ignora ese sismo sin romper los demás
     if (!Number.isFinite(longitud) || !Number.isFinite(latitud)) continue
 
-    const distanciaKm = distanciaPuntoSegmentoKm([longitud, latitud], a, b)
-    if (mag >= MAGNITUD_FUERTE && distanciaKm <= radioCriticoKm(mag)) return Infinity
+    const radioInfluencia = radioInfluenciaKm(mag)
+    preparados.push({
+      mag,
+      epicentro: [longitud, latitud],
+      radioInfluencia,
+      radioCritico: radioCriticoKm(mag),
+      // Caja de influencia: sirve para descartar rápido las calles lejanas
+      caja: agrandarCaja([longitud, latitud, longitud, latitud], radioInfluencia),
+    })
+  }
+  return preparados
+}
 
-    const radio = radioInfluenciaKm(mag)
-    if (distanciaKm < radio) {
-      factor += Math.max(0, (mag / 2) * (1 - distanciaKm / radio))
+// Igual que factorRiesgoSismico, pero con sismos ya preparados (más rápido en un grafo grande)
+export function factorRiesgoConSismosPreparados([a, b], preparados) {
+  let factor = 0
+  const cajaTramo = cajaDeGeometria({ type: 'LineString', coordinates: [a, b] })
+  for (const { mag, epicentro, radioInfluencia, radioCritico, caja } of preparados) {
+    // Atajo rápido: si el tramo está fuera de la caja de influencia del sismo, no hace
+    // falta medir con precisión (medir con Turf es lo lento cuando hay miles de calles)
+    if (!cajasSeTocan(cajaTramo, caja)) continue
+
+    const distanciaKm = distanciaPuntoSegmentoKm(epicentro, a, b)
+    if (mag >= MAGNITUD_FUERTE && distanciaKm <= radioCritico) return Infinity
+    if (distanciaKm < radioInfluencia) {
+      factor += Math.max(0, (mag / 2) * (1 - distanciaKm / radioInfluencia))
     }
   }
   return factor
+}
+
+// Cuánto riesgo agregan los sismos a un tramo de calle [a, b] (cada punto en [lon, lat]).
+// - 0: ningún sismo cerca.
+// - Un número positivo: se suma el aporte de cada sismo cercano; más grande
+//   cuanto más fuerte y más cerca está el sismo.
+// - Infinity: el tramo pasa por el radio crítico de un sismo fuerte (bloqueado).
+export function factorRiesgoSismico(tramo, sismos) {
+  return factorRiesgoConSismosPreparados(tramo, prepararSismos(sismos))
 }
 
 // Deja solo los sismos de las últimas `horas` horas (usa properties.time en ms).
