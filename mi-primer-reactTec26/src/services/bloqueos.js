@@ -71,12 +71,13 @@ export async function confirmarBloqueo(id) {
 
 // Avisa con `alCambiar()` cada vez que alguien crea, renueva, confirma o elimina un bloqueo.
 // Devuelve una función para dejar de escuchar.
-// El servidor solo manda "cambió el bloqueo N" por el canal público bloqueos-cambios
-// (migración 4): así nadie recibe datos de quién reportó. La app vuelve a pedir la vista.
+// El servidor solo manda "cambió el bloqueo N" por el canal PRIVADO bloqueos-cambios
+// (migración 4): nadie recibe datos de quién reportó y nadie puede mandar avisos falsos.
+// La app vuelve a pedir la vista.
 export function suscribirseABloqueos(alCambiar) {
   const cliente = obtenerCliente()
   const canal = cliente
-    .channel('bloqueos-cambios')
+    .channel('bloqueos-cambios', { config: { private: true } })
     .on('broadcast', { event: 'cambio' }, () => alCambiar())
     .subscribe()
   return () => {

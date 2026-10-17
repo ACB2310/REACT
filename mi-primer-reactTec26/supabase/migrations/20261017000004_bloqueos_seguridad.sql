@@ -14,9 +14,10 @@
 -- ---------------------------------------------------------------------------
 -- 1. Límites al crear un bloqueo
 -- ---------------------------------------------------------------------------
--- Máximo de reportes sin confirmar de ciudadanos (con o sin cuenta), creados en la
--- última hora, a 1 km o menos del punto nuevo. Brigadistas y coordinadores no tienen
--- este límite (son personas conocidas).
+-- Límites de reportes sin confirmar de ciudadanos (con o sin cuenta) a 1 km o menos del
+-- punto nuevo. Brigadistas y coordinadores no tienen este límite (son personas conocidas).
+-- Importante en el proyecto real: activar CAPTCHA para las sesiones anónimas
+-- (Authentication → Attack Protection) y bajar su límite de creación por IP.
 create or replace function public.preparar_bloqueo_nuevo()
 returns trigger
 language plpgsql
@@ -27,6 +28,7 @@ declare
   usuario uuid := auth.uid();
   reportes_ultima_hora integer;
   reportes_en_la_zona integer;
+  vivos_en_la_zona integer;
 begin
   if usuario is null then
     raise exception 'SIN_SESION';
@@ -53,15 +55,24 @@ begin
   end if;
 
   -- Límite por zona: cada sesión anónima nueva tiene su propio límite por persona,
-  -- así que también se limita cuántos reportes sin confirmar puede haber en 1 km
+  -- así que también se limita cuántos reportes sin confirmar de ciudadanos hay a 1 km:
+  --   - máximo 10 creados en la última hora (ritmo), y
+  --   - máximo 20 vivos en total (para que no se acumulen durante días).
+  -- Los reportes de brigadistas y coordinadores no cuentan (son personas conocidas).
   if public.rol_actual() = 'ciudadano' then
-    select count(*) into reportes_en_la_zona
+    select
+      count(*) filter (where b.creado_en > now() - interval '1 hour'),
+      count(*)
+    into reportes_en_la_zona, vivos_en_la_zona
     from public.bloqueos b
     where not b.confirmado
       and b.expira_en > now()
-      and b.creado_en > now() - interval '1 hour'
-      and extensions.st_dwithin(b.geometria, new.geometria, 1000);
-    if reportes_en_la_zona >= 10 then
+      and extensions.st_dwithin(b.geometria, new.geometria, 1000)
+      and not exists (
+        select 1 from public.perfiles p
+        where p.id = b.reportado_por and p.rol in ('brigadista', 'coordinador')
+      );
+    if reportes_en_la_zona >= 10 or vivos_en_la_zona >= 20 then
       raise exception 'LIMITE_ZONA';
     end if;
   end if;
@@ -187,8 +198,19 @@ grant select (id, geometria, tipo, descripcion, es_anonimo, confirmado, expira_e
 
 -- El tiempo real ya no manda el renglón completo (traía reportado_por): se deja de
 -- publicar la tabla y un disparador avisa solo "algo cambió en el bloqueo N"
--- por un canal público. La app de todos modos vuelve a pedir la vista.
+-- por un canal PRIVADO. Privado porque en un canal público cualquiera con la llave
+-- pública podría mandar avisos falsos y hacer que todas las apps recarguen sin parar.
+-- Todos pueden ESCUCHAR ese tema; nadie puede ENVIAR desde la app (solo el servidor).
 alter publication supabase_realtime drop table public.bloqueos;
+
+create policy "Escuchar avisos de bloqueos"
+  on realtime.messages for select
+  to anon, authenticated
+  using (
+    (select realtime.topic()) = 'bloqueos-cambios'
+    and realtime.messages.extension = 'broadcast'
+  );
+-- No hay política de insert en realtime.messages para este tema: nadie puede enviar
 
 create function public.avisar_cambio_bloqueo()
 returns trigger
@@ -201,7 +223,7 @@ begin
     jsonb_build_object('id', coalesce(new.id, old.id), 'operacion', tg_op),
     'cambio',
     'bloqueos-cambios',
-    false
+    true
   );
   return null;
 end;

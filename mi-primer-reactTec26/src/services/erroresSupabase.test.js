@@ -13,7 +13,7 @@ describe('traducirErrorSupabase', () => {
     ['SIN_PERMISO', 'No tienes permiso para hacer esto.'],
     ['NO_EXISTE', 'El bloqueo ya no existe o ya venció.'],
     ['SIN_SESION', 'No se pudo iniciar una sesión para enviar el reporte.'],
-    ['LIMITE_ZONA', 'Ya hay muchos reportes sin confirmar en esta zona. Un coordinador los está revisando.'],
+    ['LIMITE_ZONA', 'Ya hay muchos reportes sin confirmar en esta zona. Si es urgente, avisa a Protección Civil o a un brigadista.'],
     ['RENOVACION_LIMITE', 'Este reporte ya no se puede renovar. Si el bloqueo sigue, repórtalo de nuevo.'],
   ])('traduce %s', (codigo, mensaje) => {
     expect(traducirErrorSupabase(errorPostgres(codigo)).message).toBe(mensaje)

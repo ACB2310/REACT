@@ -110,6 +110,8 @@ describe('suscribirseABloqueos', () => {
     const cancelar = suscribirseABloqueos(alCambiar)
 
     expect(cliente.canales[0].nombre).toBe('bloqueos-cambios')
+    // Canal privado: solo el servidor puede enviar avisos (nadie puede mandar avisos falsos)
+    expect(cliente.channel).toHaveBeenCalledWith('bloqueos-cambios', { config: { private: true } })
     expect(cliente.canales[0].manejadores[0].tipo).toBe('broadcast')
     expect(cliente.canales[0].manejadores[0].filtro).toEqual({ event: 'cambio' })
     cliente.simularCambio()

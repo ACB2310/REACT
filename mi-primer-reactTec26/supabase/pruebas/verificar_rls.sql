@@ -4,7 +4,7 @@
 -- DESPUÉS de aplicar las migraciones 1 a 4.
 --
 -- El script TERMINA A PROPÓSITO CON UN ERROR que trae el resumen, por ejemplo:
---   ERROR: RESULTADO: 27 de 27 casos OK
+--   ERROR: RESULTADO: 30 de 30 casos OK
 -- El error deshace todo, así que no queda ningún usuario ni bloqueo de prueba.
 -- Si algún caso falla, el mensaje dice cuáles.
 
@@ -283,6 +283,24 @@ where id = (select id from bloqueo_de_d);
 select pg_temp.como('00000000-0000-0000-0000-00000000000d', true);
 select pg_temp.debe_fallar('20. Un ciudadano no renueva un reporte de más de 48 h',
   $q$ select public.renovar_bloqueo((select id from bloqueo_de_d)) $q$, 'RENOVACION_LIMITE');
+
+-- Caso 21: un brigadista tampoco confirma (solo el coordinador)
+select pg_temp.como('00000000-0000-0000-0000-0000000000b1');
+select pg_temp.debe_fallar('21. Un brigadista no puede confirmar un bloqueo',
+  $q$ select public.confirmar_bloqueo((select id from bloqueo_de_d)) $q$, 'SIN_PERMISO');
+
+-- Caso 22: confirmar un bloqueo vencido no hace nada y lo dice
+reset role;
+update public.bloqueos set expira_en = now() - interval '1 minute'
+where id = (select id from bloqueo_de_d);
+select pg_temp.como('00000000-0000-0000-0000-0000000000c1');
+select pg_temp.debe_fallar('22. Confirmar un bloqueo vencido da NO_EXISTE',
+  $q$ select public.confirmar_bloqueo((select id from bloqueo_de_d)) $q$, 'NO_EXISTE');
+
+-- Caso 23: las demás columnas de la tabla sí se pueden leer (solo reportado_por no)
+select pg_temp.como(null);
+select pg_temp.anotar('23. Sin sesión se leen tipo y vencimiento de la tabla',
+  (select count(*) from (select tipo, expira_en, confirmado from public.bloqueos) as columnas_permitidas) >= 0);
 
 -- ---------------------------------------------------------------------------
 -- Resumen. Este error es a propósito: deshace todo lo de arriba.
