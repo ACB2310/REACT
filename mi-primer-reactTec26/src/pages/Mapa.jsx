@@ -191,6 +191,17 @@ function Mapa() {
   const sinConexion =
     sismos.sinConexion || nhc.sinConexion || gdacs.sinConexion || refugios.sinConexion || bloqueos.sinConexion
   const hayAlgunDato = Boolean(sismos.sismos || nhc.datos || gdacs.datos || refugios.refugios || bloqueos.bloqueos)
+  // Etapa 7: de cuándo es el dato guardado más antiguo (para decirlo en el aviso sin conexión)
+  const consultasConDatos = [
+    [sismos, sismos.sismos],
+    [nhc, nhc.datos],
+    [gdacs, gdacs.datos],
+    [refugios, refugios.refugios],
+    [bloqueos, bloqueos.bloqueos],
+  ]
+    .filter(([fuente, datos]) => datos && Number.isFinite(fuente.consultadoEn))
+    .map(([fuente]) => fuente.consultadoEn)
+  const datoMasAntiguo = consultasConDatos.length > 0 ? Math.min(...consultasConDatos) : null
   const totalBloqueos = bloqueos.bloqueos?.features.length ?? 0
 
   const totalSismos = sismos.sismos?.features.length ?? 0
@@ -300,9 +311,11 @@ function Mapa() {
         {sinConexion && (
           <div className="mensaje-estado mensaje-aviso" role="status">
             <p>
-              {hayAlgunDato
-                ? 'Sin conexión. Se muestran los últimos datos descargados.'
-                : 'Sin conexión. No hay datos guardados.'}
+              {!hayAlgunDato
+                ? 'Sin conexión. No hay datos guardados.'
+                : datoMasAntiguo !== null
+                  ? `Sin conexión. Se muestran los datos guardados en tu teléfono; los más antiguos son del ${formatearFechaHora(datoMasAntiguo)}.`
+                  : 'Sin conexión. Se muestran los últimos datos descargados.'}
             </p>
           </div>
         )}

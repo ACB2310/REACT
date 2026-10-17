@@ -383,6 +383,20 @@ describe('Página Mapa', () => {
       expect(screen.queryByText(/No se pudieron/)).not.toBeInTheDocument()
     })
 
+    // Etapa 7: con datos guardados en el teléfono se dice de cuándo son (el más antiguo)
+    it('sin conexión dice de cuándo son los datos guardados más antiguos', () => {
+      // 14:00 UTC = 08:00 en CDMX; 20:00 UTC = 14:00
+      simularSismos({ sinConexion: true, sismos: dosSismos, consultadoEn: Date.UTC(2026, 9, 17, 20, 0), desdeAlmacen: true })
+      simularCiclones({
+        nhc: { sinConexion: true, consultadoEn: Date.UTC(2026, 9, 17, 14, 0), desdeAlmacen: true },
+        gdacs: { sinConexion: true, consultadoEn: Date.UTC(2026, 9, 17, 19, 0), desdeAlmacen: true },
+      })
+      render(<Mapa />, { wrapper: MemoryRouter })
+      expect(
+        screen.getByText(/^Sin conexión\. Se muestran los datos guardados en tu teléfono; los más antiguos son del 17 oct\.? 2026, 08:00\.$/),
+      ).toBeInTheDocument()
+    })
+
     it('sin conexión y sin datos lo dice claramente', () => {
       simularSismos({ sinConexion: true })
       simularCiclones({ nhc: { estado: 'cargando', datos: null }, gdacs: { estado: 'cargando', datos: null } })

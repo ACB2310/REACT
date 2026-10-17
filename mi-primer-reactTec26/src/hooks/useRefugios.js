@@ -16,8 +16,10 @@ async function cargarRefugios(opciones) {
 // - lista: todos, incluidos los que el coordinador aún no ubica
 // - y el estado de la carga (estado, error, actualizadoEn, recargar...)
 export function useRefugios() {
+  // guardarComo: copia en el teléfono para usarla sin conexión (etapa 7; solo datos públicos)
   const { datos, ...resto } = useDatosPeriodicos(cargarRefugios, INTERVALO_REFUGIOS_MS, {
     activo: supabaseConfigurado,
+    guardarComo: 'refugios',
   })
   // Sin Supabase no se pide nada: se avisa una vez en lugar de reintentar
   const estadoCarga = supabaseConfigurado ? resto : { ...resto, estado: 'error', error: MENSAJE_SIN_CONFIGURAR }

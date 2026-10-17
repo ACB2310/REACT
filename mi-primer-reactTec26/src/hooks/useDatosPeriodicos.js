@@ -1,16 +1,49 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+// Copia sin conexión (etapa 7): la última respuesta buena se guarda en el teléfono y se usa
+// al abrir la app sin señal. Solo para datos PÚBLICOS (nunca incidentes ni brigadas).
+// Una copia de más de 7 días ya no se usa: podría mostrar algo que ya no es cierto.
+export const PREFIJO_COPIA = 'datos:v1:'
+export const EDAD_MAXIMA_COPIA_MS = 7 * 86400000
+
+function leerCopia(clave) {
+  if (!clave) return null
+  try {
+    const copia = JSON.parse(localStorage.getItem(PREFIJO_COPIA + clave))
+    const edad = Date.now() - copia?.guardadoEn
+    if (copia?.datos == null || !Number.isFinite(edad) || edad > EDAD_MAXIMA_COPIA_MS) return null
+    return copia
+  } catch {
+    // Copia rota o almacenamiento bloqueado: como si no hubiera copia
+    return null
+  }
+}
+
+function guardarCopia(clave, copia) {
+  if (!clave) return
+  try {
+    localStorage.setItem(PREFIJO_COPIA + clave, JSON.stringify(copia))
+  } catch {
+    // Almacenamiento lleno o bloqueado: la app sigue igual, solo no habrá copia sin conexión
+  }
+}
+
 // Hook genérico para datos externos que se actualizan solos cada cierto tiempo.
 // `obtener({ signal })` debe devolver { datos, actualizadoEn } y estar definida
 // fuera del componente (así no cambia en cada render).
 // Si una recarga falla, se conservan los últimos datos que sí llegaron.
 // Con `activo: false` no se pide nada (por ejemplo, si la capa está apagada).
-export function useDatosPeriodicos(obtener, intervaloMs, { activo = true } = {}) {
-  const [datos, setDatos] = useState(null)
-  const [actualizadoEn, setActualizadoEn] = useState(null)
+// Con `guardarComo: 'nombre'` se guarda una copia para usarla sin conexión (ver arriba);
+// mientras se muestra esa copia, `desdeAlmacen` es true.
+export function useDatosPeriodicos(obtener, intervaloMs, { activo = true, guardarComo = null } = {}) {
+  const [copiaInicial] = useState(() => leerCopia(guardarComo))
+  const [datos, setDatos] = useState(copiaInicial?.datos ?? null)
+  const [actualizadoEn, setActualizadoEn] = useState(copiaInicial?.actualizadoEn ?? null)
   // Hora de la última descarga exitosa. Sirve cuando la fuente no trae hora propia
   // (por ejemplo, NHC sin tormentas activas): así se sabe cuándo se revisó.
-  const [consultadoEn, setConsultadoEn] = useState(null)
+  const [consultadoEn, setConsultadoEn] = useState(copiaInicial?.consultadoEn ?? null)
+  const [desdeAlmacen, setDesdeAlmacen] = useState(copiaInicial !== null)
+  const guardarComoRef = useRef(guardarComo)
   const [estado, setEstado] = useState('cargando')
   const [error, setError] = useState(null)
   const [sinConexion, setSinConexion] = useState(() => !navigator.onLine)
@@ -40,9 +73,17 @@ export function useDatosPeriodicos(obtener, intervaloMs, { activo = true } = {})
       try {
         const resultado = await obtenerRef.current({ signal: actual.signal })
         if (actual.signal.aborted) return
+        const ahora = Date.now()
         setDatos(resultado.datos)
         setActualizadoEn(resultado.actualizadoEn)
-        setConsultadoEn(Date.now())
+        setConsultadoEn(ahora)
+        setDesdeAlmacen(false)
+        guardarCopia(guardarComoRef.current, {
+          datos: resultado.datos,
+          actualizadoEn: resultado.actualizadoEn ?? null,
+          consultadoEn: ahora,
+          guardadoEn: ahora,
+        })
         setError(null)
         setEstado('listo')
         // Si la descarga funcionó, hay conexión (por si el evento 'online' no llegó)
@@ -87,5 +128,5 @@ export function useDatosPeriodicos(obtener, intervaloMs, { activo = true } = {})
     cargarRef.current()
   }, [])
 
-  return { datos, estado, error, actualizadoEn, consultadoEn, sinConexion, recargar }
+  return { datos, estado, error, actualizadoEn, consultadoEn, sinConexion, desdeAlmacen, recargar }
 }

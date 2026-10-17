@@ -13,6 +13,7 @@ async function cargarSismos(opciones) {
 
 // Hook que entrega los sismos de USGS y el estado de la carga
 export function useSismos() {
-  const { datos, ...resto } = useDatosPeriodicos(cargarSismos, INTERVALO_ACTUALIZACION_MS)
+  // guardarComo: copia en el teléfono para usarla sin conexión (etapa 7; solo datos públicos)
+  const { datos, ...resto } = useDatosPeriodicos(cargarSismos, INTERVALO_ACTUALIZACION_MS, { guardarComo: 'sismos' })
   return { sismos: datos, ...resto }
 }

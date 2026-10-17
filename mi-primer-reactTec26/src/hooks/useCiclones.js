@@ -20,8 +20,9 @@ async function cargarGdacs(opciones) {
 // Ciclones de NHC y de GDACS. Cada fuente tiene su propio estado: si una falla,
 // se siguen mostrando los datos de la otra.
 export function useCiclones() {
-  const nhc = useDatosPeriodicos(cargarNhc, INTERVALO_CICLONES_MS)
-  const gdacs = useDatosPeriodicos(cargarGdacs, INTERVALO_CICLONES_MS)
+  // guardarComo: copia en el teléfono para usarla sin conexión (etapa 7; solo datos públicos)
+  const nhc = useDatosPeriodicos(cargarNhc, INTERVALO_CICLONES_MS, { guardarComo: 'ciclones-nhc' })
+  const gdacs = useDatosPeriodicos(cargarGdacs, INTERVALO_CICLONES_MS, { guardarComo: 'ciclones-gdacs' })
 
   const puntosNhc = nhc.datos?.puntos ?? null
   const eventosGdacs = gdacs.datos

@@ -13,8 +13,11 @@ export const RECARGA_MINIMA_MS = 5000
 
 // Entrega los bloqueos vigentes (`bloqueos`, FeatureCollection) y el estado de la carga
 export function useBloqueos() {
+  // guardarComo: copia en el teléfono para usarla sin conexión (etapa 7; solo datos públicos)
+  // (los que vencieron mientras no había señal se quitan abajo, igual que siempre)
   const { datos, ...resto } = useDatosPeriodicos(obtenerBloqueos, INTERVALO_BLOQUEOS_MS, {
     activo: supabaseConfigurado,
+    guardarComo: 'bloqueos',
   })
   const { recargar } = resto
 
