@@ -189,4 +189,30 @@ describe('ReportarBloqueo', () => {
     expect(screen.getByText('No se pueden enviar reportes: falta configurar Supabase.')).toBeInTheDocument()
     expect(boton('Enviar reporte')).toBeDisabled()
   })
+
+  it('con el mapa muy lejos, el primer toque acerca y no marca', () => {
+    mapaFalso.actual.getZoom = vi.fn(() => 5)
+    abrir()
+    tocarMapa([-103.35, 20.67])
+
+    expect(marcadores).toHaveLength(0)
+    expect(mapaFalso.actual.flyTo).toHaveBeenCalledWith({ center: [-103.35, 20.67], zoom: 15 })
+    expect(screen.getByText(/Acércate más para marcar la calle exacta/)).toBeInTheDocument()
+
+    // Ya cerca, el siguiente toque sí marca el punto
+    mapaFalso.actual.getZoom.mockReturnValue(15)
+    tocarMapa([-103.351, 20.671])
+    expect(marcadores.at(-1).lngLat).toEqual([-103.351, 20.671])
+    expect(screen.queryByText(/Acércate más/)).toBeNull()
+    expect(screen.getByText(/Punto marcado/)).toBeInTheDocument()
+  })
+
+  it('el botón Enviar dice qué falta en cada paso', () => {
+    abrir()
+    expect(screen.getByText('Falta marcar el punto en el mapa.')).toBeInTheDocument()
+    tocarMapa([-103.35, 20.67])
+    expect(screen.queryByText('Falta marcar el punto en el mapa.')).toBeNull()
+    clic(screen.getByRole('radio', { name: /Parcial/ }))
+    expect(screen.queryByText(/^Falta /)).toBeNull()
+  })
 })

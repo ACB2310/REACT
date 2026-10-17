@@ -368,3 +368,236 @@
   min-height: 72px;
   font-size: 1.25rem;
 }
+
+/* ---------- Reportar bloqueo ---------- */
+
+/* Un poco más ancha que los demás formularios: en escritorio va en dos columnas */
+.pantalla-reportar {
+  max-width: 1100px;
+  /* Sin espacio abajo: ahí va la barra fija de Enviar */
+  padding-bottom: 0;
+}
+
+.reportar-formulario {
+  display: grid;
+  gap: 16px;
+}
+
+.reportar-encabezado,
+.reportar-lugar,
+.reportar-detalles {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.reportar-encabezado .mensaje-estado,
+.reportar-lugar .mensaje-estado,
+.reportar-detalles .mensaje-estado {
+  margin-top: 0;
+}
+
+/* En celular el mapa es más bajo para que el resto se vea sin hacer scroll sobre él */
+.pantalla-reportar .mapa-formulario {
+  height: 38dvh;
+  min-height: 220px;
+}
+
+/* Botón flotante sobre el mapa (Usar mi ubicación) */
+.boton-sobre-mapa {
+  position: absolute;
+  bottom: 12px;
+  /* A la izquierda: abajo a la derecha está la atribución del mapa */
+  left: 12px;
+  z-index: 2;
+  min-height: 48px;
+  padding: 0 20px;
+  border: none;
+  border-radius: 24px;
+  background-color: var(--primario);
+  color: var(--superficie);
+  font: inherit;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.3);
+  cursor: pointer;
+}
+
+.boton-sobre-mapa:disabled {
+  opacity: 0.75;
+  cursor: wait;
+}
+
+.boton-sobre-mapa:focus-visible {
+  outline: 3px solid var(--texto);
+  outline-offset: 2px;
+}
+
+/* Confirmación de que el punto quedó marcado */
+.punto-marcado {
+  color: #15803d;
+  font-weight: 700;
+}
+
+@media (prefers-color-scheme: dark) {
+  .punto-marcado {
+    color: #4ade80;
+  }
+}
+
+/* Barra fija abajo con el botón de enviar y lo que falta */
+.barra-enviar {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  display: grid;
+  gap: 6px;
+  margin: 0 -16px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--borde);
+  background-color: var(--superficie);
+  box-shadow: 0 -4px 16px rgb(0 0 0 / 0.1);
+}
+
+.barra-enviar-falta {
+  color: var(--texto-suave);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.reportar-aviso {
+  padding-bottom: 16px;
+}
+
+/* Escritorio: mapa a la izquierda (fijo al hacer scroll) y formulario a la derecha */
+@media (min-width: 900px) {
+  .reportar-formulario {
+    grid-template-areas:
+      'encabezado encabezado'
+      'lugar detalles'
+      'lugar enviar'
+      'lugar aviso';
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+    grid-template-rows: auto auto auto 1fr;
+    column-gap: 24px;
+  }
+
+  .reportar-encabezado {
+    grid-area: encabezado;
+  }
+
+  .reportar-lugar {
+    grid-area: lugar;
+    position: sticky;
+    top: 16px;
+  }
+
+  .reportar-detalles {
+    grid-area: detalles;
+  }
+
+  .pantalla-reportar .mapa-formulario {
+    height: 60dvh;
+  }
+
+  /* En escritorio la barra deja de flotar: va al final del formulario */
+  .barra-enviar {
+    grid-area: enviar;
+    position: static;
+    margin: 0;
+    padding: 0;
+    border-top: none;
+    background: none;
+    box-shadow: none;
+  }
+
+  .reportar-aviso {
+    grid-area: aviso;
+  }
+}
+
+/* ---------- Entrar y Mi cuenta ---------- */
+
+/* Formularios cortos: una columna angosta y centrada también en escritorio */
+.pantalla-angosta {
+  max-width: 440px;
+  padding-top: 24px;
+}
+
+.aviso-cuenta {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 10px;
+  background-color: var(--info-fondo);
+}
+
+.aviso-cuenta .texto-ayuda {
+  color: var(--info-texto);
+}
+
+/* Contraseña con su botón de mostrar a la derecha y la pista abajo */
+.campo-contrasena {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 6px 8px;
+}
+
+.boton-ver-contrasena {
+  min-width: 88px;
+  min-height: 48px;
+  padding: 0 12px;
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+  background-color: var(--superficie);
+  color: var(--texto);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.boton-ver-contrasena:focus-visible {
+  outline: 3px solid var(--primario);
+  outline-offset: 1px;
+}
+
+.pista-campo {
+  grid-column: 1 / -1;
+  color: var(--texto-suave);
+  font-size: 0.875rem;
+}
+
+/* "¿Primera vez?" separado de Entrar con una línea */
+.separador-cuenta {
+  display: grid;
+  gap: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--borde);
+}
+
+.separador-cuenta .texto-ayuda {
+  text-align: center;
+}
+
+/* Mi cuenta */
+.tarjeta-cuenta {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid var(--borde);
+  border-radius: 12px;
+  background-color: var(--superficie);
+}
+
+.tarjeta-cuenta-correo {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.accesos-cuenta {
+  display: grid;
+  gap: 8px;
+}

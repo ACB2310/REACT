@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import IniciarSesion from './IniciarSesion.jsx'
 import { useSesion } from '../hooks/useSesion.js'
 
@@ -66,7 +67,8 @@ describe('IniciarSesion', () => {
 
   it('muestra el rol del usuario y deja salir', async () => {
     actual = sesion({ usuario: { id: 'u1', email: 'coord@ejemplo.mx' }, rol: 'coordinador' })
-    render(<IniciarSesion />)
+    // Mi cuenta tiene enlaces a las pantallas del rol, por eso necesita el router
+    render(<IniciarSesion />, { wrapper: MemoryRouter })
 
     expect(screen.getByText('coord@ejemplo.mx')).toBeInTheDocument()
     expect(screen.getByText('Coordinador')).toBeInTheDocument()
@@ -85,5 +87,51 @@ describe('IniciarSesion', () => {
     actual = sesion({ configurado: false })
     render(<IniciarSesion />)
     expect(screen.getByText('No se puede entrar: falta configurar Supabase.')).toBeInTheDocument()
+  })
+
+  it('explica para quién es la cuenta', () => {
+    render(<IniciarSesion />)
+    expect(screen.getByText(/La cuenta es para brigadistas y coordinadores/)).toBeInTheDocument()
+    expect(screen.getByText('Mínimo 6 caracteres.')).toBeInTheDocument()
+  })
+
+  it('crear cuenta con contraseña corta dice qué falta y no la crea', async () => {
+    render(<IniciarSesion />)
+    escribir('Correo', 'nuevo@ejemplo.mx')
+    escribir('Contraseña', '123')
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Crear cuenta' })))
+
+    expect(screen.getByRole('alert')).toHaveTextContent('La contraseña necesita al menos 6 caracteres.')
+    expect(actual.crearCuenta).not.toHaveBeenCalled()
+  })
+
+  it('crear cuenta sin correo lo pide', async () => {
+    render(<IniciarSesion />)
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Crear cuenta' })))
+    expect(screen.getByRole('alert')).toHaveTextContent('Escribe tu correo para crear la cuenta.')
+  })
+
+  it('Mostrar deja ver la contraseña y Ocultar la vuelve a esconder', () => {
+    render(<IniciarSesion />)
+    const campo = screen.getByLabelText('Contraseña')
+    expect(campo).toHaveAttribute('type', 'password')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mostrar' }))
+    expect(campo).toHaveAttribute('type', 'text')
+    fireEvent.click(screen.getByRole('button', { name: 'Ocultar' }))
+    expect(campo).toHaveAttribute('type', 'password')
+  })
+
+  it('Mi cuenta lleva a las pantallas de cada rol', () => {
+    actual = sesion({ usuario: { id: 'u1', email: 'coord@ejemplo.mx' }, rol: 'coordinador' })
+    const { unmount } = render(<IniciarSesion />, { wrapper: MemoryRouter })
+    expect(screen.getByRole('link', { name: 'Panel de brigadas' })).toHaveAttribute('href', '/brigadas')
+    expect(screen.getByRole('link', { name: 'Zonas de peligro' })).toHaveAttribute('href', '/zonas')
+    unmount()
+
+    actual = sesion({ usuario: { id: 'u2', email: 'b@ejemplo.mx' }, rol: 'brigadista' })
+    render(<IniciarSesion />, { wrapper: MemoryRouter })
+    expect(screen.getByRole('link', { name: 'Mi brigada' })).toHaveAttribute('href', '/mi-brigada')
+    expect(screen.queryByRole('link', { name: 'Panel de brigadas' })).toBeNull()
   })
 })

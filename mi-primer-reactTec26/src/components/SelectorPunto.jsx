@@ -4,22 +4,28 @@ import { Marker } from 'maplibre-gl'
 // Deja elegir un punto en el mapa: con un toque se pone un marcador, que
 // también se puede arrastrar para ajustarlo.
 // `posicion` es [longitud, latitud] o null; `alCambiar([longitud, latitud])` avisa el cambio.
-function SelectorPunto({ mapa, posicion, alCambiar }) {
+// `alTocar` (opcional) recibe los toques en el mapa en lugar de `alCambiar`, por ejemplo para
+// acercar el mapa antes de aceptar el punto. Arrastrar el marcador siempre usa `alCambiar`.
+function SelectorPunto({ mapa, posicion, alCambiar, alTocar }) {
   const marcadorRef = useRef(null)
   const alCambiarRef = useRef(alCambiar)
+  const alTocarRef = useRef(alTocar)
   useEffect(() => {
     alCambiarRef.current = alCambiar
-  }, [alCambiar])
+    alTocarRef.current = alTocar
+  }, [alCambiar, alTocar])
 
   // Escucha los toques en el mapa
   useEffect(() => {
     if (!mapa) return
-    function alTocar(evento) {
+    function alTocarMapa(evento) {
       // MapLibre entrega { lng, lat }; aquí se arma [longitud, latitud]
-      alCambiarRef.current?.([evento.lngLat.lng, evento.lngLat.lat])
+      const punto = [evento.lngLat.lng, evento.lngLat.lat]
+      if (alTocarRef.current) alTocarRef.current(punto)
+      else alCambiarRef.current?.(punto)
     }
-    mapa.on('click', alTocar)
-    return () => mapa.off('click', alTocar)
+    mapa.on('click', alTocarMapa)
+    return () => mapa.off('click', alTocarMapa)
   }, [mapa])
 
   // Crea, mueve o quita el marcador según `posicion`
