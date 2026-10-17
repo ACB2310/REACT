@@ -31,6 +31,13 @@ describe('App', () => {
     useSesion.mockReturnValue(sesion())
   })
 
+  // Etapa 7: las pantallas secundarias se descargan al abrirlas (la app abre más rápido)
+  it('una pantalla secundaria se carga al abrirla: mientras, dice "Cargando…"', async () => {
+    abrir('/entrar')
+    expect(screen.getByText('Cargando…')).toBeInTheDocument()
+    expect(await screen.findByText('Pantalla entrar')).toBeInTheDocument()
+  })
+
   it('abre el mapa en /', () => {
     abrir('/')
     expect(screen.getByText('Pantalla mapa')).toBeInTheDocument()
@@ -59,10 +66,10 @@ describe('App', () => {
     expect(screen.getByText('Esta pantalla es solo para coordinadores.')).toBeInTheDocument()
   })
 
-  it('el coordinador sí ve la pantalla de refugios', () => {
+  it('el coordinador sí ve la pantalla de refugios', async () => {
     useSesion.mockReturnValue(sesion({ rol: 'coordinador', usuario: { id: 'c1' } }))
     abrir('/refugios')
-    expect(screen.getByText('Pantalla refugios')).toBeInTheDocument()
+    expect(await screen.findByText('Pantalla refugios')).toBeInTheDocument()
   })
 
   it('un usuario anónimo sigue viendo "Entrar"', () => {
@@ -77,24 +84,24 @@ describe('App: brigadas (etapa 6)', () => {
     useSesion.mockReturnValue(sesion())
   })
 
-  it('el coordinador ve Brigadas y abre el panel y la gestión de equipos', () => {
+  it('el coordinador ve Brigadas y abre el panel y la gestión de equipos', async () => {
     useSesion.mockReturnValue(sesion({ rol: 'coordinador', usuario: { id: 'c1' } }))
     const { unmount } = abrir('/brigadas')
     expect(screen.getByRole('link', { name: 'Brigadas' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Mi brigada' })).toBeNull()
-    expect(screen.getByText('Pantalla brigadas')).toBeInTheDocument()
+    expect(await screen.findByText('Pantalla brigadas')).toBeInTheDocument()
     unmount()
 
     abrir('/brigadas/equipos')
-    expect(screen.getByText('Pantalla equipos')).toBeInTheDocument()
+    expect(await screen.findByText('Pantalla equipos')).toBeInTheDocument()
     // "Brigadas" sigue marcada dentro de /brigadas/equipos
     expect(screen.getByRole('link', { name: 'Brigadas' })).toHaveClass('active')
   })
 
-  it('el brigadista ve Mi brigada y no ve Brigadas ni Refugios', () => {
+  it('el brigadista ve Mi brigada y no ve Brigadas ni Refugios', async () => {
     useSesion.mockReturnValue(sesion({ rol: 'brigadista', usuario: { id: 'b1' } }))
     abrir('/mi-brigada')
-    expect(screen.getByText('Pantalla mi brigada')).toBeInTheDocument()
+    expect(await screen.findByText('Pantalla mi brigada')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Mi brigada' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Brigadas' })).toBeNull()
     expect(screen.queryByRole('link', { name: 'Refugios' })).toBeNull()
