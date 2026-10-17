@@ -47,3 +47,14 @@ Después de aplicar `20261017000006_zonas_y_rutas.sql`, pega `verificar_zonas.sq
 ERROR: RESULTADO: 20 de 20 casos OK
 ```
 
+## Refugios de prueba (mientras llega la lista oficial)
+
+⚠️ Son **inventados**. Sirven solo para probar la ruta al refugio en León y Purísima del Rincón.
+
+- Cargar: pega `datos_prueba_cargar.sql` en el SQL Editor. Crea 6 refugios llamados
+  `[PRUEBA] …` (clave `PRUEBA-01` a `PRUEBA-06`): 4 abiertos, 1 lleno y 1 cerrado.
+- Borrar: pega `datos_prueba_borrar.sql`. Solo borra esos 6.
+
+Quien abra la app los ve como refugios. **Bórralos antes de mostrar la app a usuarios reales**
+y antes de cargar la lista oficial.
+
