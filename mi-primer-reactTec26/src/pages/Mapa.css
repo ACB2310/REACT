@@ -220,3 +220,27 @@
 .popup-error:empty {
   display: none;
 }
+
+/* Botón flotante para reportar un bloqueo, abajo a la derecha (al alcance del pulgar) */
+.boton-reportar {
+  position: absolute;
+  right: 12px;
+  bottom: 36px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  min-height: 56px;
+  padding: 0 20px;
+  border-radius: 28px;
+  background-color: #b91c1c;
+  color: #ffffff;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.35);
+}
+
+.boton-reportar:focus-visible {
+  outline: 3px solid var(--texto);
+  outline-offset: 3px;
+}

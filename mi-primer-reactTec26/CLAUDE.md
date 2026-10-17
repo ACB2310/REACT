@@ -83,20 +83,30 @@ Toda geometría se maneja en **GeoJSON con coordenadas `[longitud, latitud]`** (
 
 ## Seguridad y llaves
 
-- **Nunca** pongas llaves privadas (OpenRouteService, FIRMS, service role de Supabase) en el código del frontend ni en variables `VITE_*`. Solo van en las Edge Functions como secretos.
-- En el frontend solo se permiten `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`.
+- **Nunca** pongas llaves privadas (OpenRouteService, FIRMS, Secret key `sb_secret_…` de Supabase, antes "service role") en el código del frontend ni en variables `VITE_*`. Solo van en las Edge Functions como secretos.
+- En el frontend solo se permiten `VITE_SUPABASE_URL` (URL base, sin `/rest/v1`) y `VITE_SUPABASE_PUBLISHABLE_KEY` (la Publishable key `sb_publishable_…`, que reemplaza a la anon key).
 - Las llaves van en `.env.local`, que **no** se sube al repo. Mantén actualizado `.env.example` sin valores reales.
 - Toda tabla de Supabase debe tener **RLS activado** con políticas por rol: `ciudadano`, `brigadista`, `coordinador`.
 
 ## Modelo de datos (Supabase / PostGIS)
 
-- **refugios**: `id`, `nombre`, `ubicacion geography(Point)`, `capacidad`, `ocupacion`, `estado` (`abierto` | `lleno` | `cerrado`), `actualizado_en`.
-- **bloqueos**: `id`, `geometria geography`, `tipo` (`solo_vehiculos` | `total`), `descripcion`, `reportado_por`, `confirmado`, `expira_en`, `creado_en`.
+- **perfiles**: `id` (= `auth.users.id`), `nombre`, `rol` (`ciudadano` | `brigadista` | `coordinador`), `creado_en`. Solo para cuentas con correo; los anónimos no tienen perfil y cuentan como ciudadano (`rol_actual()`).
+- **refugios**: `id`, `clave_oficial`, `nombre`, `direccion`, `municipio`, `entidad`, `ubicacion geography(Point)` (puede ser nula hasta que el coordinador lo ubique), `capacidad`, `ocupacion`, `estado` (`abierto` | `lleno` | `cerrado`), `fuente`, `actualizado_en`.
+- **bloqueos**: `id`, `geometria geography(Point)`, `tipo` (`solo_vehiculos` | `total`), `descripcion` (máx. 280), `reportado_por`, `es_anonimo`, `confirmado`, `expira_en`, `renovado_en`, `creado_en`.
 - **incidentes**: `id`, `ubicacion geography(Point)`, `tipo`, `prioridad` (1–5), `estado`, `creado_en`.
 - **brigadas**: `id`, `nombre`, `vehiculo`, `ubicacion_actual geography(Point)`, `incidente_id`, `estado`.
 - **zonas_peligro**: `id`, `geometria geography(Polygon)`, `origen` (`nhc` | `gdacs` | `sismo` | `inundacion` | `manual`), `severidad`, `expira_en`.
 
-Crea **índices GIST** en todas las columnas geográficas. Los cambios de esquema van como migraciones en `supabase/migrations/`.
+Crea **índices GIST** en todas las columnas geográficas. Los cambios de esquema van como migraciones en `supabase/migrations/` (se aplican pegándolas en el SQL Editor, en orden). Después de cambiar políticas, corre `supabase/pruebas/verificar_rls.sql`.
+
+La app lee de las vistas `refugios_vista` y `bloqueos_vista` (traen `longitud` y `latitud`) y escribe con RPC: `reportar_bloqueo`, `renovar_bloqueo`, `eliminar_bloqueo` y `actualizar_refugio`. Los errores de esas funciones son códigos (`LIMITE_REPORTES`, `FUERA_DE_MEXICO`, `SIN_PERMISO`, `NO_EXISTE`, `SIN_SESION`) que `src/services/erroresSupabase.js` traduce.
+
+Decisiones de la etapa 3 (2026-10-16):
+- **Cualquiera puede reportar**, con o sin cuenta. Sin cuenta se usa la sesión **anónima** de Supabase, que se crea solo al enviar el primer reporte. Límite: 5 reportes por hora por sesión.
+- Un bloqueo es **un punto**: `solo_vehiculos` = **parcial** (se puede pasar a pie) o `total`.
+- Un bloqueo **dura 24 h**. Lo pueden **renovar** (24 h más desde ese momento) o **eliminar** quien lo reportó, los brigadistas y los coordinadores. El servidor fija el vencimiento; la app no puede mandarlo.
+- Los refugios vienen de la **lista oficial** (CSV, ver `supabase/plantillas/`) y el **coordinador los ubica** en el mapa. Nunca se inventan coordenadas.
+- Los roles se asignan desde el SQL Editor (ver `supabase/pruebas/LEEME.md`).
 
 ## Lógica de rutas (importante)
 
@@ -121,9 +131,9 @@ Crea **índices GIST** en todas las columnas geográficas. Los cambios de esquem
 
 ## Roadmap
 
-1. Mapa con sismos de USGS. ← empezar aquí
-2. Capa de huracanes (GDACS + NHC) y capa de satélite (NASA GIBS).
-3. Supabase: tablas de refugios y bloqueos, y pantalla para reportar bloqueos tocando el mapa.
+1. Mapa con sismos de USGS. ✅
+2. Capa de huracanes (GDACS + NHC) y capa de satélite (NASA GIBS). ✅
+3. Supabase: tablas de refugios y bloqueos, y pantalla para reportar bloqueos tocando el mapa. ✅ ← siguiente: 4
 4. Ruta al refugio más cercano con OpenRouteService evitando bloqueos y zonas de peligro.
 5. Ruta combinada carro + a pie.
 6. Panel de brigadas: asignación de equipos a incidentes por prioridad.

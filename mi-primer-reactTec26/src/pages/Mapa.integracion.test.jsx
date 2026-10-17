@@ -1,10 +1,15 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render } from '@testing-library/react'
 import { useEffect } from 'react'
+import { MemoryRouter } from 'react-router'
 import Mapa from './Mapa.jsx'
 import { useSismos } from '../hooks/useSismos.js'
 import { useCiclones } from '../hooks/useCiclones.js'
 import { useSatelite } from '../hooks/useSatelite.js'
+import { useRefugios } from '../hooks/useRefugios.js'
+import { useBloqueos } from '../hooks/useBloqueos.js'
+import { useSesion } from '../hooks/useSesion.js'
+import { simularSupabaseListo } from '../test/simularSupabase.js'
 import { sismosEjemplo } from '../mocks/sismosEjemplo.js'
 import { nhcEjemplo } from '../mocks/ciclonesEjemplo.js'
 import { crearMapaFalso } from '../test/mapaFalso.js'
@@ -17,6 +22,11 @@ vi.mock('maplibre-gl', () => import('../test/maplibreFalso.js'))
 vi.mock('../hooks/useSismos.js', () => ({ useSismos: vi.fn() }))
 vi.mock('../hooks/useCiclones.js', () => ({ useCiclones: vi.fn() }))
 vi.mock('../hooks/useSatelite.js', () => ({ useSatelite: vi.fn() }))
+// Refugios, bloqueos y sesión salen de Supabase: aquí se simulan
+vi.mock('../hooks/useRefugios.js', () => ({ useRefugios: vi.fn() }))
+vi.mock('../hooks/useBloqueos.js', () => ({ useBloqueos: vi.fn() }))
+vi.mock('../hooks/useSesion.js', () => ({ useSesion: vi.fn() }))
+vi.mock('../services/bloqueos.js', () => ({ renovarBloqueo: vi.fn(), eliminarBloqueo: vi.fn() }))
 vi.mock('../components/MapaBase.jsx', () => ({
   default: function MapaBaseFalso({ alCargar }) {
     useEffect(() => {
@@ -35,6 +45,7 @@ function estadoListo(datos, actualizadoEn) {
 describe('Página Mapa con las capas reales', () => {
   it('agrega sismos y ciclones al mapa que entrega MapaBase, con los ciclones debajo', () => {
     mapaFalso.actual = crearMapaFalso()
+    simularSupabaseListo({ useRefugios, useBloqueos, useSesion })
     useSismos.mockReturnValue({
       sismos: sismosEjemplo,
       estado: 'listo',
@@ -51,7 +62,7 @@ describe('Página Mapa con las capas reales', () => {
     })
     useSatelite.mockReturnValue(estadoListo(null, null))
 
-    render(<Mapa />)
+    render(<Mapa />, { wrapper: MemoryRouter })
 
     const mapa = mapaFalso.actual
     expect(mapa.fuentes.sismos.definicion).toEqual({ type: 'geojson', data: sismosEjemplo })
@@ -60,5 +71,32 @@ describe('Página Mapa con las capas reales', () => {
     expect(mapa.orden.indexOf('ciclones-conos-relleno')).toBeLessThan(mapa.orden.indexOf('sismos-circulos'))
     // Sin hora todavía, el satélite no se agrega
     expect(mapa.fuentes.satelite).toBeUndefined()
+  })
+
+  it('los bloqueos quedan arriba de sismos y refugios', () => {
+    mapaFalso.actual = crearMapaFalso()
+    useSismos.mockReturnValue({
+      sismos: sismosEjemplo,
+      estado: 'listo',
+      error: null,
+      actualizadoEn: 1700000000000,
+      sinConexion: false,
+      recargar: vi.fn(),
+    })
+    useCiclones.mockReturnValue({
+      nhc: estadoListo(nhcEjemplo, 1792184930000),
+      gdacs: estadoListo(VACIA, null),
+      ciclones: [],
+      eventosGdacsSinNhc: VACIA,
+    })
+    useSatelite.mockReturnValue(estadoListo(null, null))
+    simularSupabaseListo({ useRefugios, useBloqueos, useSesion })
+
+    render(<Mapa />, { wrapper: MemoryRouter })
+
+    const { orden } = mapaFalso.actual
+    expect(orden.indexOf('sismos-circulos')).toBeLessThan(orden.indexOf('refugios-puntos'))
+    expect(orden.indexOf('refugios-puntos')).toBeLessThan(orden.indexOf('bloqueos-puntos'))
+    expect(orden.at(-1)).toBe('bloqueos-toque')
   })
 })
